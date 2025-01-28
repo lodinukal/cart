@@ -66,7 +66,20 @@ pub const RequireContext = struct {
         const requirer_thread = thread.state;
         const module_thread = thread.parent.?.state;
 
-        if (module_thread.status() != .ok) return .pending;
+        switch (module_thread.status()) {
+            .ok => {},
+            .yield => return .pending,
+            .err_runtime,
+            .err_syntax,
+            .err_memory,
+            .err_error,
+            => {
+                cart_context.allocator.free(context.path);
+                _ = cart_context.require.require_stack.popOrNull();
+                requirer_thread.pushString("require failed");
+                requirer_thread.raiseError();
+            },
+        }
         defer _ = cart_context.require.require_stack.popOrNull();
         defer cart_context.allocator.free(context.path);
 
@@ -74,8 +87,6 @@ pub const RequireContext = struct {
         module_thread.xMove(requirer_thread, 1);
         requirer_thread.pushValue(-1);
         requirer_thread.setField(modules, context.path);
-
-        std.log.info("as; {s}", .{context.path});
 
         return .ready(1);
     }

@@ -2,23 +2,23 @@ pub fn open(l: *luau.Luau) void {
     l.newTable();
 
     l.pushString("wait");
-    l.pushFunction(lWait, "cart_task_wait");
+    l.pushFunction(lWait, "@cart/task.wait");
     l.setTable(-3);
 
     l.pushString("spawn");
-    l.pushFunction(lSpawn, "cart_task_spawn");
+    l.pushFunction(lSpawn, "@cart/task.spawn");
     l.setTable(-3);
 
     l.pushString("cancel");
-    l.pushFunction(lCancel, "cart_task_cancel");
+    l.pushFunction(lCancel, "@cart/task.cancel");
     l.setTable(-3);
 
     l.pushString("defer");
-    l.pushFunction(lDefer, "cart_task_defer");
+    l.pushFunction(lDefer, "@cart/task.defer");
     l.setTable(-3);
 
     l.pushString("delay");
-    l.pushFunction(lDelay, "cart_task_delay");
+    l.pushFunction(lDelay, "@cart/task.delay");
     l.setTable(-3);
 
     l.setReadOnly(-1, true);
@@ -26,7 +26,7 @@ pub fn open(l: *luau.Luau) void {
 
 fn lWait(l: *luau.Luau) !i32 {
     const context = Context.getContext(l) orelse return 0;
-    const time_wait = l.optNumber(1) orelse 0.0;
+    const time_wait = if (l.getTop() < 1) l.optNumber(1) orelse 0.0 else 0.0;
     try context.scheduler.schedule(try Scheduler.Thread.init(.time(time_wait), l, l));
     return l.yield(1);
 }

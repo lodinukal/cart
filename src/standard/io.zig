@@ -43,6 +43,9 @@ pub const LReader = struct {
 
         l.pushFunction(lRead, "read");
         l.setField(-2, "read");
+
+        l.pushFunction(lSkip, "skip");
+        l.setField(-2, "skip");
     }
 
     fn lToString(l: *luau.Luau) !i32 {
@@ -84,6 +87,15 @@ pub const LReader = struct {
         l.pushNumber(@floatFromInt(bytes_read));
         return 1;
     }
+
+    // 1: reader
+    // 2: number bytes
+    fn lSkip(l: *luau.Luau) !i32 {
+        const self = l.toUserdata(LReader, 1) catch l.argError(1, "expected reader");
+        const bytes: usize = @intFromFloat(l.toNumber(2) catch l.argError(2, "expected number"));
+        try self.reader.skipBytes(bytes, .{});
+        return 0;
+    }
 };
 
 pub const LWriter = struct {
@@ -116,7 +128,7 @@ pub const LWriter = struct {
         l.setMetatable(-2);
         self.erased = try .init(l.allocator(), W);
         if (@hasDecl(W, "deinit")) {
-            self.erased.free_fn = W.deinit;
+            self.erased.free_fn = @ptrCast(&W.deinit);
         }
         return self;
     }
@@ -143,7 +155,7 @@ pub const LWriter = struct {
         const self = l.toUserdata(LWriter, 1) catch l.argError(1, "expected writer");
         const buffer = l.toBuffer(2) catch l.argError(2, "expected buffer");
         const offset: usize = @intFromFloat(l.optNumber(3) orelse 0);
-        const max_bytes: usize = @intFromFloat(l.optNumber(4) orelse @as(f64, @floatFromInt(buffer.len)));
+        const max_bytes: usize = @intFromFloat(l.optNumber(4) orelse @as(f64, @floatFromInt(buffer.len - offset)));
         const bytes_written = try self.writer.write(buffer[offset..][0..max_bytes]);
         l.pushNumber(@floatFromInt(bytes_written));
         return 1;
@@ -171,21 +183,93 @@ pub fn open(l: *luau.Luau) void {
     l.setReadOnly(-1, true);
 }
 
+// the below reader/write buffer refs need the context to know when to unref the buffer
+// as when it is being exited, references are cleaned up
+
+/// constructed from a luau buffer
+const ReaderBufferRef = struct {
+    context: *const Context,
+    l: *luau.Luau,
+    buffer: []const u8,
+    ref: i32,
+    fbs: std.io.FixedBufferStream([]const u8),
+    reader: std.io.FixedBufferStream([]const u8).Reader,
+
+    pub fn init(l: *luau.Luau, index: i32, offset: usize, len: ?usize) !*LReader {
+        const context = Context.getContext(l) orelse return error.NoContext;
+        const buffer = l.toBuffer(index) catch return error.NotBuffer;
+        const self = try LReader.push(l, ReaderBufferRef);
+        const rctx = self.erased.as(ReaderBufferRef);
+        rctx.* = .{
+            .context = context,
+            .l = l,
+            .buffer = buffer[offset..][0..(len orelse buffer.len - offset)],
+            .ref = try l.ref(index),
+            .fbs = .{ .buffer = rctx.buffer, .pos = 0 },
+            .reader = rctx.fbs.reader(),
+        };
+        self.reader = rctx.reader.any();
+        return self;
+    }
+
+    pub fn deinit(self: *ReaderBufferRef) void {
+        if (self.context.exiting) return;
+        self.l.unref(self.ref);
+    }
+};
+
+// 1: buffer
+// 2: offset?
+// 3: length?
 fn lReaderFromBuffer(l: *luau.Luau) !i32 {
-    const buffer = l.toBuffer(1) catch l.argError(1, "expected buffer");
-    const reader = try LReader.push(l, std.io.FixedBufferStream([]const u8));
-    const rctx = reader.erased.as(std.io.FixedBufferStream([]const u8));
-    rctx.* = .{ .buffer = buffer, .pos = 0 };
-    reader.reader = rctx.reader().any();
+    const offset: usize = @intFromFloat(l.optNumber(2) orelse 0);
+    const length: ?usize = if (l.optNumber(3)) |n| @intFromFloat(n) else null;
+    _ = ReaderBufferRef.init(l, 1, offset, length) catch |err| switch (err) {
+        error.NotBuffer => return l.argError(1, "expected buffer"),
+        else => return err,
+    };
     return 1;
 }
 
+/// constructed from a luau buffer
+const WriterBufferRef = struct {
+    context: *const Context,
+    l: *luau.Luau,
+    buffer: []u8,
+    ref: i32,
+    fbs: std.io.FixedBufferStream([]u8),
+    writer: std.io.FixedBufferStream([]u8).Writer,
+
+    pub fn init(l: *luau.Luau, index: i32, offset: usize, length: ?usize) !*LWriter {
+        const context = Context.getContext(l) orelse return error.NoContext;
+        const buffer = l.toBuffer(index) catch return error.NotBuffer;
+        const self = try LWriter.push(l, WriterBufferRef);
+        const wctx = self.erased.as(WriterBufferRef);
+        wctx.* = .{
+            .context = context,
+            .l = l,
+            .buffer = buffer[offset..][0..(length orelse buffer.len - offset)],
+            .ref = try l.ref(index),
+            .fbs = .{ .buffer = wctx.buffer, .pos = 0 },
+            .writer = wctx.fbs.writer(),
+        };
+        self.writer = wctx.writer.any();
+        return self;
+    }
+
+    pub fn deinit(self: *WriterBufferRef) void {
+        if (self.context.exiting) return;
+        self.l.unref(self.ref);
+    }
+};
+
 fn lWriterFromBuffer(l: *luau.Luau) !i32 {
-    const buffer = l.toBuffer(1) catch l.argError(1, "expected buffer");
-    const writer = try LWriter.push(l, std.io.FixedBufferStream([]u8));
-    const wctx = writer.erased.as(std.io.FixedBufferStream([]u8));
-    wctx.* = .{ .buffer = buffer, .pos = 0 };
-    writer.writer = wctx.writer().any();
+    const offset: usize = @intFromFloat(l.optNumber(2) orelse 0);
+    const length: ?usize = if (l.optNumber(3)) |n| @intFromFloat(n) else null;
+    _ = WriterBufferRef.init(l, 1, offset, length) catch |err| switch (err) {
+        error.NotBuffer => return l.argError(1, "expected buffer"),
+        else => return err,
+    };
     return 1;
 }
 

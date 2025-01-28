@@ -46,6 +46,19 @@ pub fn build(b: *std.Build) void {
             "cart_free",
         };
         @import("luau").addModuleExportSymbols(b, lib_mod);
+    } else {
+        // dynlib
+
+        const ffi_dep = b.dependency("ffi", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        lib_mod.addImport("ffi", ffi_dep.module("ffi"));
+        if (b.systemIntegrationOption("ffi", .{})) {
+            lib_mod.linkSystemLibrary("ffi", .{});
+        } else {
+            lib_mod.linkLibrary(ffi_dep.artifact("ffi"));
+        }
     }
 
     // We will also create a module for our other entry point, 'main.zig'.

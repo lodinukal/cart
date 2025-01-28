@@ -27,6 +27,10 @@
             .url = "git+https://github.com/lodinukal/zig-luau#6e713585d094fe5a6aa9861cb9a037943ca194f4",
             .hash = "1220de35fcac76aa457331f514dda6a35d7871be7d21ee569a83b1115963e90fb271",
         },
+        .ffi = .{
+            .url = "git+https://github.com/vezel-dev/libffi.git#4ff4784890761375208c9efa197cfe3774c5fd0e",
+            .hash = "1220cfa2f61bdac1107a04b376f0a64160b474736326c00ba64f53a02062419073df",
+        },
     },
     .paths = .{
         "build.zig",

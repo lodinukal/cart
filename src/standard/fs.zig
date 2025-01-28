@@ -1,4 +1,4 @@
-const FILE_METATABLE = "cart_fs_file";
+const FILE_METATABLE = "@cart/fs.File";
 
 pub const LFile = struct {
     platform: Platform,
@@ -119,11 +119,11 @@ pub fn open(l: *luau.Luau) void {
     l.newTable();
 
     l.pushString("open_file");
-    l.pushFunction(lOpenFile, "cart_fs_open_file");
+    l.pushFunction(lOpenFile, "@cart/fs.open_file");
     l.setTable(-3);
 
     l.pushString("exists");
-    l.pushFunction(lExists, "cart_fs_exists");
+    l.pushFunction(lExists, "@cart/fs.exists");
     l.setTable(-3);
 
     l.setReadOnly(-1, true);

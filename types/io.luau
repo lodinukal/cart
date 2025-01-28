@@ -5,6 +5,10 @@ export type Reader = {
 	--- @param b The buffer to read from.
 	--- @returns The number of bytes read.
 	read: (self: Reader, b: buffer) -> number,
+
+	--- Skips a number of bytes from the buffer.
+	--- @param n The number of bytes to skip.
+	skip: (self: Reader, n: number) -> (),
 }
 
 export type Writer = {
@@ -13,20 +17,24 @@ export type Writer = {
 	--- @param offset The offset to start writing from.
 	--- @param max_bytes The maximum number of bytes to write.
 	--- @returns The number of bytes written.
-	write: (self: Writer, b: buffer, offset: number?, max_bytes: number?) -> number,
+	write: (self: Writer, b: buffer, dest_offset: number?, max_bytes: number?) -> number,
 }
 
 local io = {}
 
--- function io.reader_from_buffer(b: buffer): Reader
--- 	local _ = b
--- 	return nil :: any
--- end
+function io.reader_from_buffer(b: buffer, offset: number?, length: number?): Reader
+	local _ = b
+	local _ = offset
+	local _ = length
+	return nil :: any
+end
 
--- function io.writer_from_buffer(b: buffer): Writer
--- 	local _ = b
--- 	return nil :: any
--- end
+function io.writer_from_buffer(b: buffer, offset: number?, length: number?): Writer
+	local _ = b
+	local _ = offset
+	local _ = length
+	return nil :: any
+end
 
 --- @param from Reader
 --- @param to Writer

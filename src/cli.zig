@@ -36,6 +36,8 @@ pub fn main() !void {
     };
     try cli_state.context.init();
     try cli_state.context.loadCartStandard();
+    errdefer cli_state.deinit();
+    defer if (!is_wasm) end();
 
     var arg_it = try std.process.argsWithAllocator(allocator);
     defer arg_it.deinit();
@@ -58,8 +60,6 @@ pub fn main() !void {
             start_time = current_time;
             if (!step(delta)) break;
         }
-
-        end();
     }
 }
 

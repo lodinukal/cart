@@ -18,6 +18,8 @@ require: Require = undefined,
 temp: Temp = undefined,
 scheduler: Scheduler = undefined,
 
+exiting: bool = false,
+
 pub const Options = struct {
     luau_libs: luau.Libs = .{
         .base = true,
@@ -69,6 +71,7 @@ pub fn init(self: *Self) Error!void {
 }
 
 pub fn deinit(self: *Self) void {
+    self.exiting = true;
     self.scheduler.deinit();
     self.temp.deinit(self.allocator);
     self.require.deinit(self.allocator);
@@ -81,6 +84,7 @@ pub const Module = struct {
 };
 
 pub const modules = struct {
+    pub const ffi = @import("standard/ffi.zig");
     pub const io = @import("standard/io.zig");
     pub const fs = @import("standard/fs.zig");
     pub const sys = @import("standard/sys.zig");
@@ -88,13 +92,15 @@ pub const modules = struct {
     pub const net = @import("standard/net.zig");
 };
 
-pub const CART_MODULES: []const Module = &.{
+pub const CART_MODULES: []const Module = &[_]Module{
     .{ .name = "io", .open = modules.io.open },
     .{ .name = "fs", .open = modules.fs.open },
     .{ .name = "sys", .open = modules.sys.open },
     .{ .name = "task", .open = modules.task.open },
     .{ .name = "net", .open = modules.net.open },
-};
+} ++ if (@import("builtin").object_format != .wasm) &[_]Module{
+    .{ .name = "ffi", .open = modules.ffi.open },
+} else &[_]Module{};
 
 pub fn loadCartStandard(self: *Self) !void {
     try self.loadLibrary("cart", CART_MODULES);

@@ -2,7 +2,7 @@ pub fn open(l: *luau.Luau) void {
     l.newTable();
 
     l.pushString("get_os");
-    l.pushFunction(lGetOs, "cart_sys_get_os");
+    l.pushFunction(lGetOs, "@cart/sys.get_os");
     l.setTable(-3);
 
     l.setReadOnly(-1, true);
