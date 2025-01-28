@@ -18,12 +18,13 @@ pub fn build(b: *std.Build) void {
 
     const luau_dep = b.dependency("luau", .{
         .target = target,
-        .optimize = optimize,
+        .optimize = std.builtin.OptimizeMode.ReleaseFast,
         .use_4_vector = true,
     });
     lib_mod.addImport("luau", luau_dep.module("luau"));
 
     if (target.result.isWasm()) {
+        lib_mod.export_symbol_names = &.{ "step", "end" };
         @import("luau").addModuleExportSymbols(b, lib_mod);
     }
 
@@ -51,6 +52,7 @@ pub fn build(b: *std.Build) void {
         .name = "cart",
         .root_module = lib_mod,
     });
+    lib.stack_size = 256 * 1024; // 256 KiB
 
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
@@ -63,6 +65,7 @@ pub fn build(b: *std.Build) void {
         .name = "cart",
         .root_module = cli_mod,
     });
+    cli.stack_size = 256 * 1024; // 256 KiB
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

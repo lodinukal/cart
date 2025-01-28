@@ -92,11 +92,18 @@ pub fn fileWriter(_: ?*anyopaque, file: File) File.Error!std.fs.File.Writer {
 }
 
 pub fn fileGetReadonly(_: ?*anyopaque, file: File) bool {
-    const metadata = (platformFileToNativeFile(file).metadata() catch |err| switch (err) {
-        error.AccessDenied => return true,
-        else => std.debug.panic("fileGetReadonly: unexpected error {}", .{err}),
-    });
-    return metadata.permissions().readOnly();
+    switch (builtin.os.tag) {
+        .wasi => {
+            return false;
+        },
+        else => {
+            const metadata = (platformFileToNativeFile(file).metadata() catch |err| switch (err) {
+                error.AccessDenied => return true,
+                else => std.debug.panic("fileGetReadonly: unexpected error {}", .{err}),
+            });
+            return metadata.permissions().readOnly();
+        },
+    }
 }
 
 pub fn fileSetReadonly(_: ?*anyopaque, file: File, readonly: bool) File.Error!void {
@@ -104,16 +111,26 @@ pub fn fileSetReadonly(_: ?*anyopaque, file: File, readonly: bool) File.Error!vo
     var permissions = std.mem.zeroes(std.fs.File.Permissions);
     permissions.setReadOnly(!readonly);
     std.log.info("setting readonly: {}", .{readonly});
-    native_file.setPermissions(permissions) catch |err| switch (err) {
-        error.AccessDenied => return error.AccessDenied,
-        else => return error.Unknown,
-    };
+    switch (builtin.os.tag) {
+        .wasi => {
+            // noop
+        },
+        else => {
+            native_file.setPermissions(permissions) catch |err| switch (err) {
+                error.AccessDenied => return error.AccessDenied,
+                else => return error.Unknown,
+            };
+        },
+    }
 }
 
 pub fn fileSetPermissions(_: ?*anyopaque, file: File, class: Platform.Class, permissions: Platform.Permissions) File.Error!void {
     const native_file = platformFileToNativeFile(file);
     switch (builtin.os.tag) {
         .windows => {
+            // noop
+        },
+        .wasi => {
             // noop
         },
         else => {
@@ -132,6 +149,10 @@ pub fn fileGetPermissions(_: ?*anyopaque, file: File, class: Platform.Class) Pla
     const native_file = platformFileToNativeFile(file);
     switch (builtin.os.tag) {
         .windows => {
+            return .{};
+        },
+        .wasi => {
+            // noop
             return .{};
         },
         else => {

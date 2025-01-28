@@ -1,11 +1,30 @@
 const READER_METATABLE = "cart_io_reader";
 const WRITER_METATABLE = "cart_io_writer";
 
-pub const LReader = struct {
+const Erased = struct {
+    pub const alignment = @sizeOf(usize);
     allocator: std.mem.Allocator,
-    reader: std.io.AnyReader,
-    context: *align(8) anyopaque,
+    context: *align(alignment) anyopaque,
     len: usize,
+
+    pub fn init(allocator: std.mem.Allocator, comptime T: type) !Erased {
+        const len = @sizeOf(T);
+        const context = try allocator.create(T);
+        return .{ .allocator = allocator, .context = @ptrCast(context), .len = len };
+    }
+
+    pub fn deinit(self: *Erased) void {
+        self.allocator.free(@as([*]align(alignment) const u8, @ptrCast(self.context))[0..self.len]);
+    }
+
+    pub fn as(self: *Erased, comptime T: type) *T {
+        return @alignCast(@ptrCast(self.context));
+    }
+};
+
+pub const LReader = struct {
+    reader: std.io.AnyReader,
+    erased: Erased,
 
     pub fn open(l: *luau.Luau) void {
         l.newMetatable(READER_METATABLE) catch @panic("failed to create reader metatable");
@@ -31,14 +50,12 @@ pub const LReader = struct {
         var self = l.newUserdataDtor(LReader, dtor);
         _ = l.getMetatableRegistry(READER_METATABLE);
         l.setMetatable(-2);
-        self.allocator = l.allocator();
-        self.context = try l.allocator().create(R);
-        self.len = @sizeOf(R);
+        self.erased = try .init(l.allocator(), R);
         return self;
     }
 
     fn dtor(self: *LReader) void {
-        self.allocator.free(@as([*]align(8) const u8, @ptrCast(self.context))[0..self.len]);
+        self.erased.deinit();
     }
 
     // 1: reader
@@ -54,10 +71,8 @@ pub const LReader = struct {
 };
 
 pub const LWriter = struct {
-    allocator: std.mem.Allocator,
     writer: std.io.AnyWriter,
-    context: *align(8) anyopaque,
-    len: usize,
+    erased: Erased,
 
     pub fn open(l: *luau.Luau) void {
         l.newMetatable(WRITER_METATABLE) catch @panic("failed to create writer metatable");
@@ -83,14 +98,12 @@ pub const LWriter = struct {
         var self = l.newUserdataDtor(LWriter, dtor);
         _ = l.getMetatableRegistry(WRITER_METATABLE);
         l.setMetatable(-2);
-        self.allocator = l.allocator();
-        self.context = try l.allocator().create(W);
-        self.len = @sizeOf(W);
+        self.erased = try .init(l.allocator(), W);
         return self;
     }
 
     fn dtor(self: *LWriter) void {
-        self.allocator.free(@as([*]align(8) const u8, @ptrCast(self.context))[0..self.len]);
+        self.erased.deinit();
     }
 
     // 1: reader
@@ -125,7 +138,7 @@ pub fn open(l: *luau.Luau) void {
 fn lReaderFromBuffer(l: *luau.Luau) !i32 {
     const buffer = l.toBuffer(1) catch l.argError(1, "expected buffer");
     const reader = try LReader.push(l, std.io.FixedBufferStream([]const u8));
-    const rctx: *std.io.FixedBufferStream([]const u8) = @alignCast(@ptrCast(reader.context));
+    const rctx = reader.erased.as(std.io.FixedBufferStream([]const u8));
     rctx.* = .{ .buffer = buffer, .pos = 0 };
     reader.reader = rctx.reader().any();
     return 1;
@@ -134,7 +147,7 @@ fn lReaderFromBuffer(l: *luau.Luau) !i32 {
 fn lWriterFromBuffer(l: *luau.Luau) !i32 {
     const buffer = l.toBuffer(1) catch l.argError(1, "expected buffer");
     const writer = try LWriter.push(l, std.io.FixedBufferStream([]u8));
-    const wctx: *std.io.FixedBufferStream([]u8) = @alignCast(@ptrCast(writer.context));
+    const wctx = writer.erased.as(std.io.FixedBufferStream([]u8));
     wctx.* = .{ .buffer = buffer, .pos = 0 };
     writer.writer = wctx.writer().any();
     return 1;

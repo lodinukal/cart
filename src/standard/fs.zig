@@ -85,7 +85,7 @@ pub const LFile = struct {
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const reader = try file.reader(self.platform);
         const r = try io.LReader.push(l, std.fs.File.Reader);
-        const rctx: *std.fs.File.Reader = @alignCast(@ptrCast(r.context));
+        const rctx = r.erased.as(std.fs.File.Reader);
         rctx.* = reader;
         r.reader = rctx.any();
 
@@ -97,7 +97,7 @@ pub const LFile = struct {
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const writer = try file.writer(self.platform);
         const w = try io.LWriter.push(l, std.fs.File.Writer);
-        const wctx: *std.fs.File.Writer = @alignCast(@ptrCast(w.context));
+        const wctx = w.erased.as(std.fs.File.Writer);
         wctx.* = writer;
         w.writer = wctx.any();
         return 1;

@@ -1,0 +1,22 @@
+{
+  "name": "cart-web-example",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@bjorn3/browser_wasi_shim": "^0.4.0",
+    "@types/bun": "latest",
+    "concurrently": "^9.1.2",
+    "hono": "^4.6.19"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "cart-luau": "^0.0.1"
+  },
+  "scripts": {
+    "lint": "npx prettier . --write",
+    "dev": "concurrently \"npm:dev:*\"",
+    "dev:server": "bun --watch ./server.ts"
+  }
+}
