@@ -169,6 +169,10 @@ pub const ThreadCondition = union(enum) {
     pub inline fn time(t: f64) ThreadCondition {
         return .{ .time_ = .{ .time_left = t, .original_time = t } };
     }
+
+    pub inline fn fence() ThreadCondition {
+        return .{ .thread_ = .{ .value = .init(false) } };
+    }
 };
 
 /// stores state about a scheduler thread

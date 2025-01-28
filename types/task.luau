@@ -1,3 +1,4 @@
+--!strict
 local task = {}
 
 function task.cancel(thread: thread)

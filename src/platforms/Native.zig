@@ -13,6 +13,12 @@ const vtable: Platform.VTable = .{
     .file_set_readonly_impl = fileSetReadonly,
     .file_get_permissions_impl = fileGetPermissions,
     .file_set_permissions_impl = fileSetPermissions,
+
+    .create_client_impl = createClient,
+    .destroy_client_impl = destroyClient,
+    .client_request_impl = clientRequest,
+    .request_status_impl = requestStatus,
+    .destroy_request_impl = destroyRequest,
 };
 
 pub fn platform() Platform {
@@ -179,8 +185,179 @@ pub fn nativeFileToPlatformFile(file: std.fs.File) File {
     return handle_ptr.*;
 }
 
+// networking
+
+const NativeHttpClient = struct {
+    allocator: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
+    client: if (!is_wasm) std.http.Client else void,
+};
+
+pub fn createClient(_: ?*anyopaque, allocator: std.mem.Allocator) HttpClient.Error!HttpClient {
+    const self = try allocator.create(NativeHttpClient);
+    self.allocator = allocator;
+    self.arena = std.heap.ArenaAllocator.init(allocator);
+    if (!is_wasm) {
+        self.client = .{ .allocator = self.arena.allocator() };
+    }
+    return .{
+        .platform = platform(),
+        .handle = @intFromPtr(self),
+    };
+}
+
+pub fn destroyClient(_: ?*anyopaque, client: HttpClient) void {
+    const self: *NativeHttpClient = @ptrFromInt(client.handle);
+    if (!is_wasm) {
+        self.client.deinit();
+    }
+    self.arena.deinit();
+    self.allocator.destroy(self);
+}
+
+const NativeRequest = struct {
+    pub const Impl = if (is_wasm) struct {
+        data: ?[]const u8 = null,
+        fbs: std.io.FixedBufferStream([]const u8) = .{ .buffer = &.{}, .pos = 0 },
+
+        pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+            if (self.data) |d|
+                allocator.free(d);
+        }
+    } else struct {
+        reader: std.http.Client.Request.Reader = undefined,
+        request: std.http.Client.Request,
+
+        pub fn deinit(self: *@This(), _: std.mem.Allocator) void {
+            self.request.deinit();
+        }
+    };
+
+    allocator: std.mem.Allocator,
+    impl: Impl,
+    status: Request.Status = .pending,
+    done: std.atomic.Value(bool) = .init(false),
+
+    /// called only on non-wasm
+    pub fn spawn(self: *NativeRequest) void {
+        self.impl.request.wait() catch |err| {
+            self.status = .{ .err = err };
+            self.done.store(true, .release);
+            return;
+        };
+        self.impl.reader = self.impl.request.reader();
+        self.status = .{ .ready = self.impl.reader.any() };
+        self.done.store(true, .release);
+    }
+
+    pub fn deinit(self: *NativeRequest) void {
+        self.impl.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+};
+
+extern fn cart_fetch(url_ptr: [*]const u8, url_len: usize, context: usize) callconv(.C) void;
+
+fn cart_on_fetched_success(context: usize, data_ptr: [*]const u8, data_len: usize) callconv(.C) void {
+    const self: *NativeRequest = @ptrFromInt(context);
+    self.impl.data = self.allocator.dupe(u8, data_ptr[0..data_len]) catch @panic("out of memory");
+    self.impl.fbs = .{ .buffer = self.impl.data.?, .pos = 0 };
+    self.status = .{ .ready = self.impl.fbs.reader().any() };
+    self.done.store(true, .release);
+}
+
+fn cart_on_fetched_error(context: usize) callconv(.C) void {
+    const self: *NativeRequest = @ptrFromInt(context);
+    self.status = .{ .err = error.Unknown };
+    self.done.store(true, .release);
+}
+
+// only used on wasm
+fn cart_alloc(size: usize) callconv(.C) ?[*]const u8 {
+    return (std.heap.wasm_allocator.alloc(u8, size) catch return null).ptr;
+}
+
+// only used on wasm
+fn cart_free(ptr: [*]const u8, len: usize) callconv(.C) void {
+    std.heap.wasm_allocator.free(ptr[0..len]);
+}
+
+comptime {
+    if (is_wasm) {
+        @export(&cart_on_fetched_success, .{
+            .name = "cart_on_fetched_success",
+        });
+        @export(&cart_on_fetched_error, .{
+            .name = "cart_on_fetched_error",
+        });
+
+        @export(&cart_alloc, .{
+            .name = "cart_alloc",
+        });
+        @export(&cart_free, .{
+            .name = "cart_free",
+        });
+    }
+}
+
+pub fn clientRequest(
+    _: ?*anyopaque,
+    client: HttpClient,
+    method: std.http.Method,
+    path: []const u8,
+    options: std.http.Client.RequestOptions,
+) Request.Error!Request {
+    const self: *NativeHttpClient = @ptrFromInt(client.handle);
+    const request = try self.allocator.create(NativeRequest);
+    if (is_wasm) {
+        request.* = .{
+            .allocator = self.allocator,
+            .impl = .{},
+        };
+        cart_fetch(path.ptr, path.len, @intFromPtr(request));
+    } else {
+        const uri = std.Uri.parse(path) catch return error.InvalidUri;
+
+        request.* = .{
+            .allocator = self.allocator,
+            .impl = .{
+                .request = try self.client.open(method, uri, options),
+            },
+        };
+        try request.impl.request.send();
+
+        const thread = std.Thread.spawn(.{
+            .stack_size = 1024,
+            .allocator = self.allocator,
+        }, NativeRequest.spawn, .{request}) catch return error.OutOfMemory;
+        thread.detach();
+    }
+
+    return .{
+        .client = client,
+        .handle = @intFromPtr(request),
+    };
+}
+
+pub fn requestStatus(_: ?*anyopaque, request: Request) Request.Status {
+    const self: *NativeRequest = @ptrFromInt(request.handle);
+    if (!self.done.load(.acquire)) {
+        return .pending;
+    }
+    return self.status;
+}
+
+pub fn destroyRequest(_: ?*anyopaque, request: Request) void {
+    const self: *NativeRequest = @ptrFromInt(request.handle);
+    self.deinit();
+}
+
 const std = @import("std");
 const builtin = @import("builtin");
 
+const is_wasm = builtin.object_format == .wasm;
+
 const Platform = @import("../Platform.zig");
 const File = Platform.File;
+const HttpClient = Platform.HttpClient;
+const Request = Platform.Request;

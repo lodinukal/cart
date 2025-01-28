@@ -61,7 +61,7 @@ end
 
 local result = fib(10)
 
-fs.openFile("output.temp.txt", {
+fs.open_file("output.temp.txt", {
     create_if_not_exists = true,
     open_mode = "read_write",
 })

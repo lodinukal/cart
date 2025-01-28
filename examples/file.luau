@@ -1,5 +1,5 @@
 local fs = require("@cart/fs")
-fs.openFile("file.temp.txt", {
+fs.open_file("file.temp.txt", {
 	create_if_not_exists = true,
 	open_mode = "read_write",
 })

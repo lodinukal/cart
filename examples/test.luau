@@ -5,7 +5,7 @@ print(`{fs.exists("help.temp.txt")} help`)
 print(`{fs.exists("help2.temp.txt")} help2`)
 print(`{fs.exists("help3.temp.txt")} help3`)
 
-local file = fs.openFile("help.temp.txt", {
+local file = fs.open_file("help.temp.txt", {
 	create_if_not_exists = true,
 })
 local reader = file:reader()
@@ -15,7 +15,7 @@ while reader:read(buf) > 0 do
 	print(buffer.tostring(buf))
 end
 
-local file2 = fs.openFile("help.temp.txt", {
+local file2 = fs.open_file("help.temp.txt", {
 	open_mode = "write_only",
 	lock = "exclusive",
 	truncate_if_exists = true,
@@ -46,7 +46,7 @@ xthen(task1, function()
 	print("done")
 end)
 
--- local file = fs.openFile("help.temp.txt", {})
+-- local file = fs.open_file("help.temp.txt", {})
 -- assert(file, "Failed to open file")
 -- fs.closeFile(file)
 

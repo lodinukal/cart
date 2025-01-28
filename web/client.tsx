@@ -1,6 +1,6 @@
 import type { Inode } from "@bjorn3/browser_wasi_shim";
 import { File } from "@bjorn3/browser_wasi_shim";
-import { Cart, CartOptions, Memory, stdIo } from "cart-luau";
+import { Cart, CartOptions, Memory, stdIo } from "../packages/cart";
 
 const shared_mem = new Memory();
 
@@ -14,6 +14,7 @@ const search_params = new Map<string, string>(
     })
 );
 
+let cart: Cart;
 const default_luaurc = `
 {
   "languageMode": "strict",
@@ -52,7 +53,7 @@ async function run() {
   const contents = await response.text();
   fs.set(example_name, new File(new TextEncoder().encode(contents)));
 
-  const cart = new Cart(
+  cart = new Cart(
     new CartOptions({
       memory: shared_mem,
       args: [example_name],

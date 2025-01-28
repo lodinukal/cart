@@ -291,6 +291,41 @@ export class Cart {
             }
           }
         },
+        cart_fetch(url_ptr: number, url_len: number, context: number) {
+          const cart_on_fetched_success = self.memory.exports![
+            "cart_on_fetched_success"
+          ];
+          const cart_on_fetched_error = self.memory.exports![
+            "cart_on_fetched_error"
+          ];
+
+          const cart_alloc = self.memory.exports!["cart_alloc"] as (
+            size: number
+          ) => number;
+          const cart_free = self.memory.exports!["cart_free"] as (
+            ptr: number
+          ) => void;
+
+          const url = self.memory.loadString(url_ptr, url_len);
+          fetch(url)
+            .then((response) => response.text())
+            .then((text) => {
+              // allocate a new buffer in the wasm memory
+              const ptr = cart_alloc(text.length);
+              if (ptr === 0) {
+                console.error("Failed to allocate memory for fetch response");
+                cart_on_fetched_error(context);
+                return;
+              }
+              self.memory.storeString(ptr, text);
+              cart_on_fetched_success(context, ptr, text.length);
+              cart_free(ptr);
+            })
+            .catch((error) => {
+              console.error(`Failed to fetch ${url}: ${error}`);
+              cart_on_fetched_error(context);
+            });
+        },
       },
       wasi_snapshot_preview1: this.wasi.wasiImport,
     };
@@ -334,9 +369,9 @@ export class Cart {
       },
     });
 
-    const end = exports.end as (() => void) | undefined;
+    const end = exports.cart_end as (() => void) | undefined;
 
-    if (exports.step !== undefined) {
+    if (exports.cart_step !== undefined) {
       let prev_time: number | undefined = undefined;
       function step(current_time: number) {
         if (prev_time === undefined) {
@@ -344,7 +379,7 @@ export class Cart {
         }
         const delta = current_time - prev_time;
         prev_time = current_time;
-        const continues = (exports.step as (arg0: number) => boolean)(
+        const continues = (exports.cart_step as (arg0: number) => boolean)(
           delta / 1000
         );
         if (!continues) {

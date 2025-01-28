@@ -4,8 +4,21 @@ const std = @import("std");
 // declaratively construct a build graph that will be executed by an external
 // runner.
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    var wasm_cpu_set: std.Target.Cpu.Feature.Set = .empty;
+    wasm_cpu_set.addFeature(@intFromEnum(std.Target.wasm.Feature.atomics));
+    wasm_cpu_set.addFeatureSet(std.Target.wasm.cpu.bleeding_edge.features);
+    const wasm_target = b.resolveTargetQuery(.{
+        .abi = .musl,
+        .cpu_arch = .wasm32,
+        .ofmt = .wasm,
+        .os_tag = .wasi,
+        .cpu_features_add = wasm_cpu_set,
+    });
+
+    const in_target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    const target = if (in_target.result.isWasm()) wasm_target else in_target;
 
     const config = b.addOptions();
 
@@ -24,7 +37,14 @@ pub fn build(b: *std.Build) void {
     lib_mod.addImport("luau", luau_dep.module("luau"));
 
     if (target.result.isWasm()) {
-        lib_mod.export_symbol_names = &.{ "step", "end" };
+        lib_mod.export_symbol_names = &.{
+            "cart_step",
+            "cart_end",
+            "cart_on_fetched_success",
+            "cart_on_fetched_error",
+            "cart_alloc",
+            "cart_free",
+        };
         @import("luau").addModuleExportSymbols(b, lib_mod);
     }
 
@@ -52,7 +72,6 @@ pub fn build(b: *std.Build) void {
         .name = "cart",
         .root_module = lib_mod,
     });
-    lib.stack_size = 256 * 1024; // 256 KiB
 
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
@@ -65,7 +84,6 @@ pub fn build(b: *std.Build) void {
         .name = "cart",
         .root_module = cli_mod,
     });
-    cli.stack_size = 256 * 1024; // 256 KiB
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

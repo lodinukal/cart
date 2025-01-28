@@ -21,14 +21,14 @@ pub const LFile = struct {
         l.setField(-2, "reader");
         l.pushFunction(lWriter, "writer");
         l.setField(-2, "writer");
-        l.pushFunction(lGetReadonly, "getReadonly");
-        l.setField(-2, "getReadonly");
-        l.pushFunction(lSetReadonly, "setReadonly");
-        l.setField(-2, "setReadonly");
-        l.pushFunction(lGetPermissions, "getPermissions");
-        l.setField(-2, "getPermissions");
-        l.pushFunction(lSetPermissions, "setPermissions");
-        l.setField(-2, "setPermissions");
+        l.pushFunction(lGetReadonly, "get_readonly");
+        l.setField(-2, "get_readonly");
+        l.pushFunction(lSetReadonly, "set_readonly");
+        l.setField(-2, "set_readonly");
+        l.pushFunction(lGetPermissions, "get_permissions");
+        l.setField(-2, "get_permissions");
+        l.pushFunction(lSetPermissions, "set_permissions");
+        l.setField(-2, "set_permissions");
     }
 
     fn lToString(l: *luau.Luau) !i32 {
@@ -65,7 +65,7 @@ pub const LFile = struct {
     fn lGetPermissions(l: *luau.Luau) !i32 {
         const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
-        const class = util.parseStringAsEnum(Platform.Class, l, 2) orelse (l.argError(2, "expected class") catch unreachable);
+        const class = try util.parseStringAsEnum(Platform.Class, l, 2, null);
         const permissions = file.getPermissions(class, self.platform);
         pushPermissions(l, permissions);
         return 1;
@@ -74,7 +74,7 @@ pub const LFile = struct {
     fn lSetPermissions(l: *luau.Luau) !i32 {
         const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
-        const class = util.parseStringAsEnum(Platform.Class, l, 2) orelse (l.argError(2, "expected class") catch unreachable);
+        const class = try util.parseStringAsEnum(Platform.Class, l, 2, null);
         const permissions = parsePermissions(l, 3) orelse (l.argError(3, "expected permissions") catch unreachable);
         try file.setPermissions(self.platform, class, permissions);
         return 0;
@@ -84,10 +84,7 @@ pub const LFile = struct {
         const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const reader = try file.reader(self.platform);
-        const r = try io.LReader.push(l, std.fs.File.Reader);
-        const rctx = r.erased.as(std.fs.File.Reader);
-        rctx.* = reader;
-        r.reader = rctx.any();
+        _ = try io.LReader.pushReader(l, reader);
 
         return 1;
     }
@@ -96,10 +93,7 @@ pub const LFile = struct {
         const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const writer = try file.writer(self.platform);
-        const w = try io.LWriter.push(l, std.fs.File.Writer);
-        const wctx = w.erased.as(std.fs.File.Writer);
-        wctx.* = writer;
-        w.writer = wctx.any();
+        _ = try io.LWriter.pushWriter(l, writer);
         return 1;
     }
 
@@ -124,8 +118,8 @@ pub fn open(l: *luau.Luau) void {
 
     l.newTable();
 
-    l.pushString("openFile");
-    l.pushFunction(lOpenFile, "cart_fs_openFile");
+    l.pushString("open_file");
+    l.pushFunction(lOpenFile, "cart_fs_open_file");
     l.setTable(-3);
 
     l.pushString("exists");
@@ -135,15 +129,15 @@ pub fn open(l: *luau.Luau) void {
     l.setReadOnly(-1, true);
 }
 
-pub fn parseFileFlags(l: *luau.Luau, index: i32) ?Platform.File.Flags {
+pub fn parseFileFlags(l: *luau.Luau, index: i32) !Platform.File.Flags {
     // get table
-    if (l.typeOf(index) != .table) return null;
+    if (l.typeOf(index) != .table) return .{};
     _ = l.getField(index, "open_mode");
-    const open_mode = util.parseStringAsEnum(std.fs.File.OpenMode, l, -1) orelse .read_only;
+    const open_mode = try util.parseStringAsEnum(std.fs.File.OpenMode, l, -1, .read_only);
     l.pop(1);
 
     _ = l.getField(index, "lock");
-    const lock = util.parseStringAsEnum(std.fs.File.Lock, l, -1) orelse .none;
+    const lock = try util.parseStringAsEnum(std.fs.File.Lock, l, -1, .none);
     l.pop(1);
 
     _ = l.getField(index, "create_if_not_exists");
@@ -235,7 +229,7 @@ pub fn pushPermissions(l: *luau.Luau, permissions: Platform.Permissions) void {
 fn lOpenFile(l: *luau.Luau) !i32 {
     const context = Context.getContext(l) orelse return 0;
     const path = l.toString(1) catch l.argError(1, "expected path as string");
-    const flags = parseFileFlags(l, 2) orelse l.argError(2, "expected file flags");
+    const flags = parseFileFlags(l, 2) catch l.argError(2, "expected file flags");
     const file = try context.platform.openFile(path, flags);
     LFile.push(l, context.platform, file);
     return 1;

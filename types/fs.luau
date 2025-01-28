@@ -23,31 +23,31 @@ export type FileFlags = {
 export type File = {
 	close: (self: File) -> (),
 
-	getReadonly: (self: File) -> boolean,
-	setReadonly: (self: File, readonly: boolean) -> (),
+	get_readonly: (self: File) -> boolean,
+	set_readonly: (self: File, readonly: boolean) -> (),
 
 	--- Returns the permissions for the given file
 	--- @param file The file to get the permissions for
 	--- @param group The group to get the permissions for, ignored on non-POSIX systems
-	getPermissions: (self: File, group: PermissionGroup) -> Permissions,
+	get_permissions: (self: File, group: PermissionGroup) -> Permissions,
 
 	--- Sets the permissions for the given file
 	--- @param file The file to set the permissions for
 	--- @param permissions The permissions to set
 	--- @param group The group to set the permissions for, ignored on non-POSIX systems
-	setPermissions: (self: File, permissions: Permissions, group: PermissionGroup) -> (),
+	set_permissions: (self: File, permissions: Permissions, group: PermissionGroup) -> (),
 
 	reader: (self: File) -> io.Reader,
 	writer: (self: File) -> io.Writer,
 }
 
-function fs.openFile(path: string, flags: FileFlags): File
+function fs.open_file(path: string, flags: FileFlags): File
 	local _ = path
 	local _ = flags
 	return nil :: any
 end
 
-function fs.deleteFile(path: string): boolean
+function fs.delete_file(path: string): boolean
 	local _ = path
 	return nil :: any
 end

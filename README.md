@@ -5,6 +5,9 @@ a `cross application run time` for luau
 TODO:
 
 - [ ] @cart/net implementation
+  - [x] fetch
+  - [ ] websocket
+  - [ ] server
 - [ ] @cart/web implementation
 - [ ] @cart/json implementation
 - [ ] Add more examples

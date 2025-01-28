@@ -1,13 +1,13 @@
 local fs = require("@cart/fs")
-local file = fs.openFile("readonly.temp.txt", {
+local file = fs.open_file("readonly.temp.txt", {
 	create_if_not_exists = true,
 	open_mode = "read_only",
 })
-file:setReadonly(false)
-print(`{file:getReadonly()} readonly`)
+file:set_readonly(false)
+print(`{file:get_readonly()} readonly`)
 -- file:setReadonly(true)
-print(`{file:getReadonly()} readonly`)
+print(`{file:get_readonly()} readonly`)
 -- file:setReadonly(false)
-print(`{file:getReadonly()} readonly`)
+print(`{file:get_readonly()} readonly`)
 
-fs.deleteFile("readonly.temp.txt")
+fs.delete_file("readonly.temp.txt")

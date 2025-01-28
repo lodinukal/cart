@@ -80,20 +80,30 @@ pub const Module = struct {
     open: fn (*luau.Luau) void,
 };
 
+pub const modules = struct {
+    pub const io = @import("standard/io.zig");
+    pub const fs = @import("standard/fs.zig");
+    pub const sys = @import("standard/sys.zig");
+    pub const task = @import("standard/task.zig");
+    pub const net = @import("standard/net.zig");
+};
+
 pub const CART_MODULES: []const Module = &.{
-    .{ .name = "io", .open = @import("standard/io.zig").open },
-    .{ .name = "fs", .open = @import("standard/fs.zig").open },
-    .{ .name = "task", .open = @import("standard/task.zig").open },
+    .{ .name = "io", .open = modules.io.open },
+    .{ .name = "fs", .open = modules.fs.open },
+    .{ .name = "sys", .open = modules.sys.open },
+    .{ .name = "task", .open = modules.task.open },
+    .{ .name = "net", .open = modules.net.open },
 };
 
 pub fn loadCartStandard(self: *Self) !void {
     try self.loadLibrary("cart", CART_MODULES);
 }
 
-pub fn loadLibrary(self: *Self, comptime alias: []const u8, comptime modules: []const Module) !void {
+pub fn loadLibrary(self: *Self, comptime alias: []const u8, comptime m: []const Module) !void {
     const module_table = Require.getModuleTable(self, self.main_state);
     try self.native_aliases.append(alias);
-    inline for (modules) |module| {
+    inline for (m) |module| {
         const name = module.name;
         module.open(self.main_state);
 

@@ -8,6 +8,9 @@ pub fn main() !void {
     const plat = lib.Platform.Native.platform();
     const luaurc_file = try plat.openFile(".luaurc", .{ .mode = .read_only, .create_if_not_exists = false });
 
+    const http_client = try plat.createClient(allocator);
+    lib.Context.modules.net.setClient(http_client);
+
     const luaurc_contents = (try luaurc_file.reader(plat))
         .readAllAlloc(allocator, std.math.maxInt(u16)) catch return error.OutOfMemory;
 
@@ -16,6 +19,7 @@ pub fn main() !void {
     cli_state = .{
         .allocator = allocator,
         .platform = plat,
+        .http_client = http_client,
         .luaurc_file = luaurc_file,
         .luaurc_contents = luaurc_contents,
         .luaurc = luaurc,
@@ -50,16 +54,19 @@ pub fn main() !void {
         var start_time: f64 = @floatFromInt(std.time.milliTimestamp());
         while (!cli_state.context.isWorkDone()) {
             const current_time: f64 = @floatFromInt(std.time.milliTimestamp());
-            cli_state.context.delta_time = (current_time - start_time) / 1000.0;
+            const delta = (current_time - start_time) / 1000.0;
             start_time = current_time;
-            if (!step()) break;
+            if (!step(delta)) break;
         }
+
+        end();
     }
 }
 
 const CliState = struct {
     allocator: std.mem.Allocator,
     platform: lib.Platform,
+    http_client: lib.Platform.HttpClient,
     luaurc_file: lib.Platform.File,
     luaurc_contents: []const u8,
     luaurc: lib.luaurc.Config,
@@ -70,11 +77,13 @@ const CliState = struct {
         self.platform.closeFile(self.luaurc_file);
         self.luaurc.deinit();
         self.context.deinit();
+
+        self.http_client.destroy();
     }
 };
 var cli_state: CliState = undefined;
 
-pub fn step(delta: f32) callconv(.c) bool {
+pub fn step(delta: f64) callconv(.c) bool {
     cli_state.context.delta_time = delta;
     cli_state.context.poll() catch return !cli_state.context.isWorkDone();
     cli_state.context.temp.nextFrame();
@@ -89,10 +98,10 @@ pub fn end() callconv(.c) void {
 comptime {
     if (is_wasm) {
         @export(&step, .{
-            .name = "step",
+            .name = "cart_step",
         });
         @export(&end, .{
-            .name = "end",
+            .name = "cart_end",
         });
     }
 }

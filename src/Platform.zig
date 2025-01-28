@@ -1,6 +1,6 @@
 const Self = @This();
 
-pub const Error = File.Error;
+pub const Error = File.Error || Request.Error || HttpClient.Error;
 
 pub const VTable = struct {
     open_file_impl: *const fn (ctx: ?*anyopaque, path: []const u8, flags: File.Flags) File.Error!File,
@@ -13,6 +13,18 @@ pub const VTable = struct {
     file_get_readonly_impl: *const fn (ctx: ?*anyopaque, file: File) bool,
     file_get_permissions_impl: *const fn (ctx: ?*anyopaque, file: File, class: Class) Permissions,
     file_set_permissions_impl: *const fn (ctx: ?*anyopaque, file: File, class: Class, permissions: Permissions) File.Error!void,
+
+    create_client_impl: *const fn (ctx: ?*anyopaque, allocator: std.mem.Allocator) HttpClient.Error!HttpClient,
+    destroy_client_impl: *const fn (ctx: ?*anyopaque, client: HttpClient) void,
+    client_request_impl: *const fn (
+        ctx: ?*anyopaque,
+        client: HttpClient,
+        method: std.http.Method,
+        path: []const u8,
+        options: std.http.Client.RequestOptions,
+    ) Request.Error!Request,
+    request_status_impl: *const fn (ctx: ?*anyopaque, request: Request) Request.Status,
+    destroy_request_impl: *const fn (ctx: ?*anyopaque, request: Request) void,
 };
 
 vtable: *const VTable,
@@ -32,6 +44,10 @@ pub inline fn deleteFile(self: Self, path: []const u8) File.Error!void {
 
 pub inline fn fileExists(self: Self, path: []const u8) bool {
     return self.vtable.file_exists_impl(self.context, path);
+}
+
+pub inline fn createClient(self: Self, allocator: std.mem.Allocator) HttpClient.Error!HttpClient {
+    return self.vtable.create_client_impl(self.context, allocator);
 }
 
 pub const Class = std.fs.File.PermissionsUnix.Class;
@@ -82,6 +98,53 @@ pub const File = struct {
     /// valid on posix
     pub inline fn setPermissions(self: File, platform: Self, class: Class, permissions: Permissions) File.Error!void {
         return platform.vtable.file_set_permissions_impl(platform.context, self, class, permissions);
+    }
+};
+
+pub const Request = struct {
+    pub const Error = std.http.Client.RequestError ||
+        std.http.Client.Request.SendError ||
+        std.http.Client.Request.WaitError ||
+        HttpClient.Error || error{ InvalidUri, Unknown };
+
+    pub const Status = union(enum) {
+        ready: std.io.AnyReader,
+        err: Request.Error,
+        pending,
+    };
+
+    client: HttpClient,
+    handle: usize,
+
+    pub inline fn status(self: Request) Status {
+        return self.client.platform.vtable.request_status_impl(self.client.platform.context, self);
+    }
+
+    pub inline fn destroy(self: Request) void {
+        return self.client.platform.vtable.destroy_request_impl(self.client.platform.context, self);
+    }
+};
+
+pub const HttpClient = struct {
+    pub const Error = error{
+        Unsupported,
+        OutOfMemory,
+    };
+
+    platform: Self,
+    handle: usize,
+
+    pub fn request(
+        self: HttpClient,
+        method: std.http.Method,
+        path: []const u8,
+        options: std.http.Client.RequestOptions,
+    ) Request.Error!Request {
+        return self.platform.vtable.client_request_impl(self.platform.context, self, method, path, options);
+    }
+
+    pub fn destroy(self: HttpClient) void {
+        return self.platform.vtable.destroy_client_impl(self.platform.context, self);
     }
 };
 
