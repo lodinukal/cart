@@ -45,7 +45,16 @@ pub fn init(self: *Self) Error!void {
     errdefer luau_state.deinit();
 
     // define __CART as a global
+    luau_state.newMetatable(CART_GLOBAL_NAME) catch return error.OutOfMemory;
+    _ = luau_state.pushString(CART_GLOBAL_NAME);
+    luau_state.setField(-2, "__type");
+    _ = luau_state.pushString("This metatable is locked.");
+    luau_state.setField(-2, "__metatable");
+    luau_state.setReadOnly(-1, true);
+
     luau_state.pushLightUserdata(@ptrCast(self));
+    _ = luau_state.getMetatableRegistry(CART_GLOBAL_NAME);
+    luau_state.setMetatable(-2);
     luau_state.setGlobal(CART_GLOBAL_NAME);
 
     luau_state.open(self.options.luau_libs);
@@ -93,14 +102,13 @@ pub const modules = struct {
 };
 
 pub const CART_MODULES: []const Module = &[_]Module{
+    .{ .name = "ffi", .open = modules.ffi.open },
     .{ .name = "io", .open = modules.io.open },
     .{ .name = "fs", .open = modules.fs.open },
     .{ .name = "sys", .open = modules.sys.open },
     .{ .name = "task", .open = modules.task.open },
     .{ .name = "net", .open = modules.net.open },
-} ++ if (@import("builtin").object_format != .wasm) &[_]Module{
-    .{ .name = "ffi", .open = modules.ffi.open },
-} else &[_]Module{};
+};
 
 pub fn loadCartStandard(self: *Self) !void {
     try self.loadLibrary("cart", CART_MODULES);
@@ -125,7 +133,7 @@ pub fn getContext(l: *luau.Luau) ?*Self {
         l.pop(1);
         return null;
     }
-    return l.toUserdata(Self, -1) catch @panic("validated was a light userdata, but toUserdata failed");
+    return l.checkUserdata(Self, -1, CART_GLOBAL_NAME);
 }
 
 /// returns true if there is no more work to be done for the context

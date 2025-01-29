@@ -1,6 +1,6 @@
 local sys = require("@cart/sys")
 if sys.get_os() == "wasi" then
-	error("This example is not supported on WASI.")
+	error("This is not supported on WASI.")
 end
 
 local ffi = require("@cart/ffi")
@@ -48,23 +48,18 @@ assert(BeginDrawing, "Failed to find BeginDrawing")
 local EndDrawing: (() -> ())? = lib:get("EndDrawing", "void")
 assert(EndDrawing, "Failed to find EndDrawing")
 
-local ColorT: {
-	r: number,
-	g: number,
-	b: number,
-	a: number,
-} = ffi.structure("raylib.Color", {
+export type Color = { r: number, g: number, b: number, a: number }
+local ColorT: ffi.Structure<Color> = ffi.structure("raylib.Color", {
 	{ name = "r", ty = "uint8" },
 	{ name = "g", ty = "uint8" },
 	{ name = "b", ty = "uint8" },
 	{ name = "a", ty = "uint8" },
 })
-export type Color = typeof(ColorT)
 
 local ClearBackground: ((Color) -> ())? = lib:get("ClearBackground", "void", ColorT)
 assert(ClearBackground, "Failed to find ClearBackground")
 
-local DrawText: ((string, number, number, number, Color) -> ())? =
+local DrawText: ((string, number, number, number, ffi.StructureArg<Color>) -> ())? =
 	lib:get("DrawText", "void", "pointer", "sint", "sint", "sint", ColorT)
 assert(DrawText, "Failed to find DrawText")
 

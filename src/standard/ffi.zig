@@ -1,6 +1,7 @@
 const SYMBOL_METATABLE = "@cart/ffi.Symbol";
 const DYNLIB_METATABLE = "@cart/ffi.Dynlib";
 const STRUCTURE_METATABLE = "@cart/ffi.Structure";
+const BUFFER_SLICE_METATABLE = "@cart/ffi.BufferSlice";
 
 const MAX_ARGS = 8;
 const MAX_FIELDS = 16;
@@ -8,18 +9,35 @@ const MARSHAL_TEMP_SIZE = 1024;
 
 pub fn open(l: *luau.Luau) void {
     LDynLib.open(l);
-    LSymbol.open(l);
-    LStructure.open(l);
+    if (dynlib_supported) {
+        LSymbol.open(l);
+        LStructure.open(l);
+    }
+    LBufferSlice.open(l);
 
     l.newTable();
+
+    l.pushString("supported");
+    l.pushBoolean(dynlib_supported);
+    l.setTable(-3);
 
     l.pushString("open");
     l.pushFunction(lOpen, "@cart/ffi.open");
     l.setTable(-3);
 
-    l.pushString("structure");
-    l.pushFunction(lStructure, "@cart/ffi.structure");
-    l.setTable(-3);
+    if (dynlib_supported) {
+        l.pushString("structure");
+        l.pushFunction(lStructure, "@cart/ffi.structure");
+        l.setTable(-3);
+
+        l.pushString("sizeof");
+        l.pushFunction(lSizeof, "@cart/ffi.sizeof");
+        l.setTable(-3);
+
+        l.pushString("slice");
+        l.pushFunction(lSlice, "@cart/ffi.slice");
+        l.setTable(-3);
+    }
 
     l.setReadOnly(-1, true);
 }
@@ -146,6 +164,73 @@ const CPrimitiveType = enum(u32) {
     }
 };
 
+const LBufferSlice = struct {
+    l: *luau.Luau,
+    // to the buffer
+    ref: ?i32,
+    // offset and len are already applied
+    // len is visible through the buffer
+    buffer: []u8,
+    offset: usize,
+
+    pub fn open(l: *luau.Luau) void {
+        l.newMetatable(BUFFER_SLICE_METATABLE) catch @panic("failed to create buffer pointer metatable");
+        l.pushString(BUFFER_SLICE_METATABLE);
+        l.setField(-2, "__type");
+        l.pushString("This metatable is locked");
+        l.setField(-2, "__metatable");
+        l.pushFunction(lToString, "__tostring");
+        l.setField(-2, "__tostring");
+
+        l.pushFunction(lRelease, "release");
+        l.setField(-2, "release");
+    }
+
+    pub fn deinit(self: *LBufferSlice) void {
+        const context = Context.getContext(self.l) orelse return;
+        if (context.exiting) return;
+        if (self.ref) |ref| {
+            self.l.unref(ref);
+            self.ref = null;
+            self.offset = 0;
+            self.buffer = undefined;
+        }
+    }
+
+    pub fn lRelease(l: *luau.Luau) !i32 {
+        const self = l.checkUserdata(LBufferSlice, 1, BUFFER_SLICE_METATABLE);
+        if (self.ref) |_| {
+            self.deinit();
+        } else {
+            l.raiseErrorFmt("buffer pointer already released", .{}) catch unreachable;
+        }
+        return 0;
+    }
+
+    pub fn lToString(l: *luau.Luau) !i32 {
+        const self = l.checkUserdata(LBufferSlice, 1, BUFFER_SLICE_METATABLE);
+        try l.pushFmtString("cart.BufferSlice<{d}>", .{self.offset});
+        return 1;
+    }
+
+    pub fn push(l: *luau.Luau, buffer: i32, offset: usize, len: ?usize) !*LBufferSlice {
+        const self = l.newUserdataDtor(LBufferSlice, deinit);
+        self.* = .{
+            .l = l,
+            .buffer = (l.toBuffer(buffer) catch unreachable)[offset..], // should have validated
+            .ref = try l.ref(buffer),
+            .offset = offset,
+        };
+        if (len) |slice_to| {
+            self.buffer = self.buffer[0..slice_to];
+        }
+        _ = l.getMetatableRegistry(BUFFER_SLICE_METATABLE);
+        l.setMetatable(-2);
+
+        return self;
+    }
+};
+
 const LStructure = struct {
     l: *luau.Luau,
     arena: std.heap.ArenaAllocator,
@@ -165,12 +250,60 @@ const LStructure = struct {
         l.setField(-2, "__tostring");
         l.pushValue(-1);
         l.setField(-2, "__index");
+
+        l.pushFunction(lWrite, "write");
+        l.setField(-2, "write");
     }
 
     pub fn lToString(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LStructure, 1) catch l.argError(1, "expected structure");
+        const self = l.checkUserdata(LStructure, 1, STRUCTURE_METATABLE);
         try l.pushFmtString("cart.Structure<{s}>", .{self.type_name});
         return 1;
+    }
+
+    // 1: structure
+    // 2: buffer
+    // 3: offset
+    // 4: lua value to coerce
+    pub fn lWrite(l: *luau.Luau) !i32 {
+        const self = l.checkUserdata(LStructure, 1, STRUCTURE_METATABLE);
+        const buffer = l.toBuffer(2) catch l.argError(2, "expected buffer");
+        const offset: usize = @intCast(l.toInteger(3) catch l.argError(3, "expected offset"));
+
+        if (!l.isTable(4)) {
+            l.argError(4, "expected table");
+        }
+
+        const write_to = buffer[offset..];
+
+        var offsets: [MAX_FIELDS]usize = undefined;
+        if (ffi.ffi_get_struct_offsets(abi, &self.type_, &offsets) != .ok) {
+            l.raiseErrorFmt("failed to get struct offsets", .{}) catch unreachable;
+        }
+
+        l.pushValue(4);
+        l.pushNil();
+        while (l.next(-2)) {
+            l.pushValue(-2);
+            const key = try l.toString(-1);
+            const index_of_field: usize = blk: {
+                for (self.fields_names.constSlice(), 0..) |field, field_index| {
+                    if (std.mem.eql(u8, key, field)) {
+                        break :blk field_index;
+                    }
+                }
+                l.pop(2);
+                l.raiseErrorFmt("field not found: {s}", .{key}) catch unreachable;
+            };
+            const field = self.fields_ctypes.buffer[index_of_field];
+            var structure_field_buffer = std.heap.FixedBufferAllocator.init(write_to[offsets[index_of_field]..]);
+            const structure_field_allocator = structure_field_buffer.allocator();
+            _ = try field.coerceLuauType(l, -2, structure_field_allocator);
+            l.pop(2);
+        }
+        l.pop(1);
+
+        return 0;
     }
 
     pub fn push(l: *luau.Luau) *LStructure {
@@ -200,36 +333,52 @@ const CType = union(enum) {
         return switch (self) {
             .primitive => CPrimitiveType.coerceLuauType(self.primitive, l, index, allocator),
             .structure => {
-                l.pushValue(index);
-                l.pushNil();
-                const buffer = try allocator.alloc(u8, self.structure.type_.size);
-                var offsets: [MAX_FIELDS]usize = undefined;
-                if (ffi.ffi_get_struct_offsets(switch (@import("builtin").target.os.tag) {
-                    .windows => .win64,
-                    else => .sysv64,
-                }, &self.structure.type_, &offsets) != .ok) {
-                    l.raiseErrorFmt("failed to get struct offsets", .{}) catch unreachable;
-                }
-                while (l.next(-2)) {
-                    l.pushValue(-2);
-                    const key = try l.toString(-1);
-                    const index_of_field: usize = blk: {
-                        for (self.structure.fields_names.constSlice(), 0..) |field, field_index| {
-                            if (std.mem.eql(u8, key, field)) {
-                                break :blk field_index;
-                            }
+                switch (l.typeOf(index)) {
+                    .userdata => {
+                        const buffer_pointer = l.checkUserdata(LBufferSlice, index, BUFFER_SLICE_METATABLE);
+                        if (buffer_pointer.ref) |_| {
+                            return @ptrCast(buffer_pointer.buffer.ptr);
+                        } else {
+                            l.raiseErrorFmt("buffer pointer already released", .{}) catch unreachable;
                         }
-                        l.pop(2);
-                        l.raiseErrorFmt("field not found: {s}", .{key}) catch unreachable;
-                    };
-                    const field = self.structure.fields_ctypes.buffer[index_of_field];
-                    var structure_field_buffer = std.heap.FixedBufferAllocator.init(buffer[offsets[index_of_field]..]);
-                    const structure_field_allocator = structure_field_buffer.allocator();
-                    _ = try field.coerceLuauType(l, -2, structure_field_allocator);
-                    l.pop(2);
+                    },
+                    .table => {
+                        l.pushValue(index);
+                        l.pushNil();
+                        const buffer = try allocator.alloc(u8, self.structure.type_.size);
+                        var offsets: [MAX_FIELDS]usize = undefined;
+                        if (ffi.ffi_get_struct_offsets(abi, &self.structure.type_, &offsets) != .ok) {
+                            l.raiseErrorFmt("failed to get struct offsets", .{}) catch unreachable;
+                        }
+                        while (l.next(-2)) {
+                            l.pushValue(-2);
+                            const key = try l.toString(-1);
+                            const index_of_field: usize = blk: {
+                                for (self.structure.fields_names.constSlice(), 0..) |field, field_index| {
+                                    if (std.mem.eql(u8, key, field)) {
+                                        break :blk field_index;
+                                    }
+                                }
+                                l.pop(2);
+                                l.raiseErrorFmt("field not found: {s}", .{key}) catch unreachable;
+                            };
+                            const field = self.structure.fields_ctypes.buffer[index_of_field];
+                            var structure_field_buffer = std.heap.FixedBufferAllocator.init(buffer[offsets[index_of_field]..]);
+                            const structure_field_allocator = structure_field_buffer.allocator();
+                            _ = try field.coerceLuauType(l, -2, structure_field_allocator);
+                            l.pop(2);
+                        }
+                        l.pop(1);
+                        return @ptrCast(buffer.ptr);
+                    },
+                    .buffer => {
+                        const buffer = try l.toBuffer(index);
+                        return @ptrCast(buffer.ptr);
+                    },
+                    else => {
+                        l.raiseErrorFmt("expected buffer, table, or buffer pointer", .{}) catch unreachable;
+                    },
                 }
-                l.pop(1);
-                return @ptrCast(buffer.ptr);
             },
         };
     }
@@ -348,7 +497,7 @@ const LSymbol = struct {
     }
 
     fn lCall(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LSymbol, 1) catch l.argError(1, "expected symbol");
+        const self = l.checkUserdata(LSymbol, 1, SYMBOL_METATABLE);
         const arg_count: usize = @intCast(l.getTop() - 1);
 
         var buf = std.mem.zeroes([MARSHAL_TEMP_SIZE]u8);
@@ -400,7 +549,11 @@ const LSymbol = struct {
 };
 
 const LDynLib = struct {
-    dynlib: ?std.DynLib = null,
+    const ImplDynlib = switch (dynlib_supported) {
+        true => std.DynLib,
+        false => void,
+    };
+    dynlib: ?ImplDynlib = null,
 
     pub fn open(l: *luau.Luau) void {
         l.newMetatable(DYNLIB_METATABLE) catch @panic("failed to create dynlib metatable");
@@ -413,11 +566,13 @@ const LDynLib = struct {
         l.pushValue(-1);
         l.setField(-2, "__index");
 
-        l.pushFunction(lClose, "close");
-        l.setField(-2, "close");
+        if (dynlib_supported) {
+            l.pushFunction(lClose, "close");
+            l.setField(-2, "close");
 
-        l.pushFunction(lGet, "get");
-        l.setField(-2, "get");
+            l.pushFunction(lGet, "get");
+            l.setField(-2, "get");
+        }
     }
 
     fn lToString(l: *luau.Luau) !i32 {
@@ -439,7 +594,7 @@ const LDynLib = struct {
     }
 
     pub fn lClose(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LDynLib, 1) catch l.argError(1, "expected dynlib");
+        const self = l.checkUserdata(LDynLib, 1, DYNLIB_METATABLE);
         if (self.dynlib) |_| {
             self.deinit();
         } else {
@@ -449,7 +604,7 @@ const LDynLib = struct {
     }
 
     pub fn lGet(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LDynLib, 1) catch l.argError(1, "expected dynlib");
+        const self = l.checkUserdata(LDynLib, 1, DYNLIB_METATABLE);
         const symbol = l.toString(2) catch l.argError(2, "expected name of symbol");
 
         const dynlib = &(self.dynlib orelse (l.raiseErrorFmt("dynlib already closed", .{}) catch unreachable));
@@ -479,11 +634,6 @@ const LDynLib = struct {
             sym.args.appendAssumeCapacity(sym.args_enum.buffer[at].asType());
         }
 
-        std.log.info("return: {}", .{sym.return_type});
-        for (sym.args.constSlice()) |arg| {
-            std.log.info("arg: {}", .{arg});
-        }
-
         try sym.func.prepare(.default, @intCast(sym.args.len), sym.args.slice().ptr, sym.return_type);
 
         return 1;
@@ -493,20 +643,16 @@ const LDynLib = struct {
 // 1: string dynlib name
 fn lOpen(l: *luau.Luau) !i32 {
     const name = l.toString(1) catch l.argError(1, "expected dynlib name");
-    switch (@import("builtin").os.tag) {
-        .windows, .macos, .linux, .ios => {
-            const lib = std.DynLib.open(name) catch {
-                l.pushNil();
-                return 1;
-            };
-            _ = LDynLib.push(l, lib);
-        },
-        else => {
-            l.pushString("dynlib not supported on this platform");
-            return l.raiseError();
-        },
+    if (dynlib_supported) {
+        const lib = std.DynLib.open(name) catch {
+            l.pushNil();
+            return 1;
+        };
+        _ = LDynLib.push(l, lib);
+        return 1;
     }
-    return 1;
+    l.pushString("dynlib not supported on this platform");
+    return l.raiseError();
 }
 
 // 1: string type name
@@ -563,6 +709,23 @@ fn lStructure(l: *luau.Luau) !i32 {
     return 1;
 }
 
+fn lSizeof(l: *luau.Luau) !i32 {
+    const ty = parseType(l, 1) catch l.argError(1, "expected type");
+    l.pushInteger(@intCast(ty.getSize()));
+    return 1;
+}
+
+// 1: buffer
+// 2: offset
+// 3: length optional
+fn lSlice(l: *luau.Luau) !i32 {
+    _ = l.toBuffer(1) catch l.argError(1, "expected buffer");
+    const offset: usize = @intCast(l.toInteger(2) catch l.argError(2, "expected offset"));
+    const length: ?usize = if (l.optNumber(3)) |n| @intFromFloat(n) else null;
+    _ = try LBufferSlice.push(l, 1, offset, length);
+    return 1;
+}
+
 pub fn parseType(l: *luau.Luau, index: i32) !CType {
     switch (l.typeOf(index)) {
         .string => {
@@ -570,7 +733,7 @@ pub fn parseType(l: *luau.Luau, index: i32) !CType {
             return .{ .primitive = ty };
         },
         .userdata => {
-            const structure = l.toUserdata(LStructure, index) catch return error.InvalidStructureType;
+            const structure = l.checkUserdata(LStructure, index, STRUCTURE_METATABLE);
             return .{ .structure = structure };
         },
         else => return error.UnexpectedType,
@@ -581,7 +744,21 @@ const std = @import("std");
 const luau = @import("luau");
 
 const Context = @import("../Context.zig");
+const Platform = @import("../Platform.zig");
 const Scheduler = @import("../Scheduler.zig");
 
-const ffi = @import("ffi");
+const dynlib_supported = switch (@import("builtin").os.tag) {
+    .windows, .macos, .linux, .ios => true,
+    else => false,
+};
+
+const ffi = switch (dynlib_supported) {
+    true => @import("ffi"),
+    false => void,
+};
+// wont be accessed when ffi is void
+const abi: ffi.Abi = switch (@import("builtin").os.tag) {
+    .windows => .win64,
+    else => .sysv64,
+};
 const util = @import("../util.zig");

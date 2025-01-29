@@ -188,16 +188,21 @@ pub fn nativeFileToPlatformFile(file: std.fs.File) File {
 // networking
 
 const NativeHttpClient = struct {
+    const Client = switch (Platform.is_wasm) {
+        true => void,
+        false => std.http.Client,
+    };
+
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
-    client: if (!is_wasm) std.http.Client else void,
+    client: Client,
 };
 
 pub fn createClient(_: ?*anyopaque, allocator: std.mem.Allocator) HttpClient.Error!HttpClient {
     const self = try allocator.create(NativeHttpClient);
     self.allocator = allocator;
     self.arena = std.heap.ArenaAllocator.init(allocator);
-    if (!is_wasm) {
+    if (!Platform.is_wasm) {
         self.client = .{ .allocator = self.arena.allocator() };
     }
     return .{
@@ -208,7 +213,7 @@ pub fn createClient(_: ?*anyopaque, allocator: std.mem.Allocator) HttpClient.Err
 
 pub fn destroyClient(_: ?*anyopaque, client: HttpClient) void {
     const self: *NativeHttpClient = @ptrFromInt(client.handle);
-    if (!is_wasm) {
+    if (!Platform.is_wasm) {
         self.client.deinit();
     }
     self.arena.deinit();
@@ -216,7 +221,15 @@ pub fn destroyClient(_: ?*anyopaque, client: HttpClient) void {
 }
 
 const NativeRequest = struct {
-    pub const Impl = if (is_wasm) struct {
+    const ImplStandard = struct {
+        reader: std.http.Client.Request.Reader = undefined,
+        request: std.http.Client.Request,
+
+        pub fn deinit(self: *@This(), _: std.mem.Allocator) void {
+            self.request.deinit();
+        }
+    };
+    const ImplWasm = struct {
         data: ?[]const u8 = null,
         fbs: std.io.FixedBufferStream([]const u8) = .{ .buffer = &.{}, .pos = 0 },
 
@@ -224,13 +237,11 @@ const NativeRequest = struct {
             if (self.data) |d|
                 allocator.free(d);
         }
-    } else struct {
-        reader: std.http.Client.Request.Reader = undefined,
-        request: std.http.Client.Request,
+    };
 
-        pub fn deinit(self: *@This(), _: std.mem.Allocator) void {
-            self.request.deinit();
-        }
+    pub const Impl = switch (Platform.is_wasm) {
+        true => ImplWasm,
+        false => ImplStandard,
     };
 
     allocator: std.mem.Allocator,
@@ -283,7 +294,7 @@ fn cart_free(ptr: [*]const u8, len: usize) callconv(.C) void {
 }
 
 comptime {
-    if (is_wasm) {
+    if (Platform.is_wasm) {
         @export(&cart_on_fetched_success, .{
             .name = "cart_on_fetched_success",
         });
@@ -309,7 +320,7 @@ pub fn clientRequest(
 ) Request.Error!Request {
     const self: *NativeHttpClient = @ptrFromInt(client.handle);
     const request = try self.allocator.create(NativeRequest);
-    if (is_wasm) {
+    if (Platform.is_wasm) {
         request.* = .{
             .allocator = self.allocator,
             .impl = .{},
@@ -354,8 +365,6 @@ pub fn destroyRequest(_: ?*anyopaque, request: Request) void {
 
 const std = @import("std");
 const builtin = @import("builtin");
-
-const is_wasm = builtin.object_format == .wasm;
 
 const Platform = @import("../Platform.zig");
 const File = Platform.File;

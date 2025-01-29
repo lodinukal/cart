@@ -153,3 +153,5 @@ const builtin = @import("builtin");
 
 pub const Native = @import("platforms/Native.zig");
 // pub const Wasm = @import("platforms/Wasm.zig");
+
+pub const is_wasm = builtin.object_format == .wasm;

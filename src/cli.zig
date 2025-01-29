@@ -1,7 +1,7 @@
 pub fn main() !void {
     var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = if (is_wasm) std.heap.wasm_allocator else general_purpose_allocator.allocator();
-    defer if (!is_wasm) {
+    const allocator = if (lib.Platform.is_wasm) std.heap.wasm_allocator else general_purpose_allocator.allocator();
+    defer if (!lib.Platform.is_wasm) {
         _ = general_purpose_allocator.deinit();
     };
 
@@ -37,7 +37,7 @@ pub fn main() !void {
     try cli_state.context.init();
     try cli_state.context.loadCartStandard();
     errdefer cli_state.deinit();
-    defer if (!is_wasm) end();
+    defer if (!lib.Platform.is_wasm) end();
 
     var arg_it = try std.process.argsWithAllocator(allocator);
     defer arg_it.deinit();
@@ -52,7 +52,7 @@ pub fn main() !void {
     try cli_state.context.execute(thread);
     cli_state.context.temp.nextFrame();
 
-    if (!is_wasm) {
+    if (!lib.Platform.is_wasm) {
         var start_time: f64 = @floatFromInt(std.time.milliTimestamp());
         while (!cli_state.context.isWorkDone()) {
             const current_time: f64 = @floatFromInt(std.time.milliTimestamp());
@@ -96,7 +96,7 @@ pub fn end() callconv(.c) void {
 }
 
 comptime {
-    if (is_wasm) {
+    if (lib.Platform.is_wasm) {
         @export(&step, .{
             .name = "cart_step",
         });
@@ -112,7 +112,6 @@ fn luau_error_fn(err: []const u8) void {
 
 const std = @import("std");
 const builtin = @import("builtin");
-const is_wasm = builtin.target.os.tag == .wasi or (builtin.target.os.tag == .freestanding and builtin.target.ofmt == .wasm);
 
 /// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
 const lib = @import("cart_lib");

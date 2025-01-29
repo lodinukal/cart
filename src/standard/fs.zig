@@ -37,7 +37,7 @@ pub const LFile = struct {
     }
 
     fn lClose(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
+        const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         if (self.file) |f| {
             self.platform.closeFile(f);
             self.file = null;
@@ -48,14 +48,14 @@ pub const LFile = struct {
     }
 
     fn lGetReadonly(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
+        const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         l.pushBoolean(file.getReadonly(self.platform));
         return 1;
     }
 
     fn lSetReadonly(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
+        const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const readonly = l.optBoolean(2) orelse l.argError(2, "expected boolean");
         try file.setReadonly(self.platform, readonly);
@@ -63,7 +63,7 @@ pub const LFile = struct {
     }
 
     fn lGetPermissions(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
+        const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const class = try util.parseStringAsEnum(Platform.Class, l, 2, null);
         const permissions = file.getPermissions(class, self.platform);
@@ -72,7 +72,7 @@ pub const LFile = struct {
     }
 
     fn lSetPermissions(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
+        const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const class = try util.parseStringAsEnum(Platform.Class, l, 2, null);
         const permissions = parsePermissions(l, 3) orelse (l.argError(3, "expected permissions") catch unreachable);
@@ -81,7 +81,7 @@ pub const LFile = struct {
     }
 
     fn lReader(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
+        const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const reader = try file.reader(self.platform);
         _ = try io.LReader.pushReader(l, reader);
@@ -90,7 +90,7 @@ pub const LFile = struct {
     }
 
     fn lWriter(l: *luau.Luau) !i32 {
-        const self = l.toUserdata(LFile, 1) catch l.argError(1, "expected file");
+        const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const writer = try file.writer(self.platform);
         _ = try io.LWriter.pushWriter(l, writer);
