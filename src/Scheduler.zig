@@ -89,6 +89,11 @@ pub fn poll(self: *Self, cart_context: *CartContext) Error!void {
                         keeping = true;
                         break :scope;
                     },
+                    .err => {
+                        break :result .{
+                            .err = thread.state.toString(-1) catch "unknown error",
+                        };
+                    },
                 },
                 .time_ => |*t| {
                     t.time_left -= cart_context.delta_time;
@@ -130,6 +135,7 @@ pub fn poll(self: *Self, cart_context: *CartContext) Error!void {
 pub const Poll = union(enum) {
     ready_: i32,
     pending,
+    err,
 
     pub inline fn ready(arg_count: i32) Poll {
         return .{ .ready_ = arg_count };

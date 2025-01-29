@@ -77,7 +77,7 @@ pub const RequireContext = struct {
                 cart_context.allocator.free(context.path);
                 _ = cart_context.require.require_stack.popOrNull();
                 requirer_thread.pushString("require failed");
-                requirer_thread.raiseError();
+                return .err;
             },
         }
         defer _ = cart_context.require.require_stack.popOrNull();
