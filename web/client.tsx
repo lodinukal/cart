@@ -45,7 +45,10 @@ async function run() {
     })
   );
 
-  const example_name = search_params.get("example") || "dom.luau";
+  const example_with_args_name = search_params.get("example") || "dom.luau";
+  const split_example_with_args = example_with_args_name.split("|");
+  const example_name = split_example_with_args[0];
+  const example_args = split_example_with_args.slice(1);
   const response = await fetch(`/examples/${example_name}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch example: ${response.statusText}`);
@@ -56,7 +59,7 @@ async function run() {
   cart = new Cart(
     new CartOptions({
       memory: shared_mem,
-      args: [example_name],
+      args: [example_name, ...example_args],
       env: [],
       fds: stdIo("", fs),
     })
