@@ -194,6 +194,8 @@ pub const LHandle = struct {
 
 pub fn open(l: *luau.Luau) void {
     if (!Platform.is_wasm) {
+        l.newTable();
+        l.setReadOnly(-1, true);
         return;
     }
 

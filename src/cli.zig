@@ -19,7 +19,6 @@ pub fn main() !void {
         .allocator = allocator,
         .platform = plat,
         .http_client = http_client,
-        .luaurc_file = luaurc_file,
         .luaurc_contents = luaurc_contents,
         .luaurc = luaurc,
         .context = .{
