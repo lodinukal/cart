@@ -36,19 +36,8 @@ pub fn build(b: *std.Build) void {
     });
     lib_mod.addImport("luau", luau_dep.module("luau"));
 
-    if (target.result.isWasm()) {
-        lib_mod.export_symbol_names = &.{
-            "cart_step",
-            "cart_end",
-            "cart_on_fetched_success",
-            "cart_on_fetched_error",
-            "cart_alloc",
-            "cart_free",
-        };
-        @import("luau").addModuleExportSymbols(b, lib_mod);
-    } else {
+    if (!target.result.isWasm()) {
         // dynlib
-
         const ffi_dep = b.dependency("ffi", .{
             .target = target,
             .optimize = optimize,
@@ -67,7 +56,7 @@ pub fn build(b: *std.Build) void {
         // only contains e.g. external object files, you can make this `null`.
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
-        .root_source_file = b.path("src/cli.zig"),
+        .root_source_file = if (target.result.isWasm()) b.path("src/wasm.zig") else b.path("src/cli.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -97,6 +86,24 @@ pub fn build(b: *std.Build) void {
         .name = "cart",
         .root_module = cli_mod,
     });
+    if (target.result.isWasm()) {
+        lib_mod.export_symbol_names = &.{
+            "cart_alloc",
+            "cart_free",
+            "cart_popLastError",
+            "cart_loadThreadFromFile",
+            "cart_loadThreadFromString",
+            "cart_closeThread",
+            "cart_executeThread",
+            "cart_threadStatus",
+            "cart_threadIsScheduled",
+            "cart_step",
+            "cart_end",
+            "cart_callFunction",
+            "cart_destroyFunction",
+        };
+        @import("luau").addModuleExportSymbols(b, lib_mod);
+    }
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

@@ -1,12 +1,11 @@
 pub fn main() !void {
     var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = if (lib.Platform.is_wasm) std.heap.wasm_allocator else general_purpose_allocator.allocator();
-    defer if (!lib.Platform.is_wasm) {
-        _ = general_purpose_allocator.deinit();
-    };
+    const allocator = general_purpose_allocator.allocator();
+    defer _ = general_purpose_allocator.deinit();
 
     const plat = lib.Platform.Native.platform();
     const luaurc_file = try plat.openFile(".luaurc", .{ .mode = .read_only, .create_if_not_exists = false });
+    defer plat.closeFile(luaurc_file);
 
     const http_client = try plat.createClient(allocator);
     lib.Context.modules.net.setClient(http_client);
@@ -36,8 +35,7 @@ pub fn main() !void {
     };
     try cli_state.context.init();
     try cli_state.context.loadCartStandard();
-    errdefer cli_state.deinit();
-    defer if (!lib.Platform.is_wasm) end();
+    defer cli_state.deinit();
 
     var arg_it = try std.process.argsWithAllocator(allocator);
     defer arg_it.deinit();
@@ -52,14 +50,12 @@ pub fn main() !void {
     try cli_state.context.execute(thread);
     cli_state.context.temp.nextFrame();
 
-    if (!lib.Platform.is_wasm) {
-        var start_time: f64 = @floatFromInt(std.time.milliTimestamp());
-        while (!cli_state.context.isWorkDone()) {
-            const current_time: f64 = @floatFromInt(std.time.milliTimestamp());
-            const delta = (current_time - start_time) / 1000.0;
-            start_time = current_time;
-            if (!step(delta)) break;
-        }
+    var start_time: f64 = @floatFromInt(std.time.milliTimestamp());
+    while (!cli_state.context.isWorkDone()) {
+        const current_time: f64 = @floatFromInt(std.time.milliTimestamp());
+        const delta = (current_time - start_time) / 1000.0;
+        start_time = current_time;
+        if (!step(delta)) break;
     }
 }
 
@@ -67,14 +63,12 @@ const CliState = struct {
     allocator: std.mem.Allocator,
     platform: lib.Platform,
     http_client: lib.Platform.HttpClient,
-    luaurc_file: lib.Platform.File,
     luaurc_contents: []const u8,
     luaurc: lib.luaurc.Config,
     context: lib.Context,
 
     pub fn deinit(self: *CliState) void {
         self.allocator.free(self.luaurc_contents);
-        self.platform.closeFile(self.luaurc_file);
         self.luaurc.deinit();
         self.context.deinit();
 
@@ -89,21 +83,6 @@ pub fn step(delta: f64) callconv(.c) bool {
     cli_state.context.temp.nextFrame();
     cli_state.context.main_state.gcCollect();
     return !cli_state.context.isWorkDone();
-}
-
-pub fn end() callconv(.c) void {
-    cli_state.deinit();
-}
-
-comptime {
-    if (lib.Platform.is_wasm) {
-        @export(&step, .{
-            .name = "cart_step",
-        });
-        @export(&end, .{
-            .name = "cart_end",
-        });
-    }
 }
 
 fn luau_error_fn(err: []const u8) void {

@@ -143,6 +143,30 @@ export class Memory {
     return this.loadString(ptr, len);
   }
 
+  storef32Array(ptr: number, arr: Float32Array) {
+    new Float32Array(this.mem!.buffer, ptr, arr.length).set(arr);
+  }
+
+  storef64Array(ptr: number, arr: Float64Array) {
+    new Float64Array(this.mem!.buffer, ptr, arr.length).set(arr);
+  }
+
+  storei32Array(ptr: number, arr: Int32Array) {
+    new Int32Array(this.mem!.buffer, ptr, arr.length).set(arr);
+  }
+
+  storei64Array(ptr: number, arr: BigInt64Array) {
+    new BigInt64Array(this.mem!.buffer, ptr, arr.length).set(arr);
+  }
+
+  storeu32Array(ptr: number, arr: Uint32Array) {
+    new Uint32Array(this.mem!.buffer, ptr, arr.length).set(arr);
+  }
+
+  storeu64Array(ptr: number, arr: BigUint64Array) {
+    new BigUint64Array(this.mem!.buffer, ptr, arr.length).set(arr);
+  }
+
   storeu8(ptr: number, val: number) {
     this.mem!.setUint8(ptr, val);
   }
@@ -216,6 +240,26 @@ export class Memory {
     const bytes = encoder.encode(str);
     this.storeBytes(ptr, bytes);
   }
+
+  storeZString(ptr: number, str: string) {
+    this.storeString(ptr, str);
+    this.storeu8(ptr + str.length, 0);
+  }
+
+  alloc(len: number) {
+    const ptr = this.exports!["cart_alloc"](len);
+    return ptr;
+  }
+
+  free(ptr: number) {
+    this.exports!["cart_free"](ptr);
+  }
+
+  allocZString(str: string) {
+    const ptr = this.alloc(str.length + 1);
+    this.storeZString(ptr, str);
+    return ptr;
+  }
 }
 
 import {
@@ -261,9 +305,166 @@ class NativeException extends Error {
   }
 }
 
+export enum ThreadStatus {
+  ok,
+  yield,
+  err_runtime,
+  err_syntax,
+  err_memory,
+  err_error,
+}
+
+export class LuauThread {
+  cart: Cart;
+  handle: number;
+
+  constructor(cart: Cart, handle: number) {
+    this.cart = cart;
+    this.handle = handle;
+  }
+
+  get valid() {
+    return this.handle !== 0;
+  }
+
+  close() {
+    const cart_closeThread = this.cart.memory.exports!["cart_closeThread"] as (
+      thread: number
+    ) => void;
+    cart_closeThread(this.handle);
+  }
+
+  async execute() {
+    const cart_executeThread = this.cart.memory.exports![
+      "cart_executeThread"
+    ] as (thread: number) => void;
+    cart_executeThread(this.handle);
+    while (this.is_scheduled) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  get is_scheduled(): boolean {
+    const cart_threadIsScheduled = this.cart.memory.exports![
+      "cart_threadIsScheduled"
+    ] as (thread: number) => number;
+    return cart_threadIsScheduled(this.handle) !== 0;
+  }
+
+  get status(): ThreadStatus {
+    const cart_threadStatus = this.cart.memory.exports![
+      "cart_threadStatus"
+    ] as (thread: number) => number;
+    return cart_threadStatus(this.handle);
+  }
+}
+
+// reserve the first handles:
+// 0: null
+// 1: undefined
+// 2: empty string
+// 3: true
+// 4: false
+
+export const enum TaggedValueType {
+  null = 0,
+  undefined = 1,
+  empty_string = 2,
+  true = 3,
+  false = 4,
+  start = 5,
+}
+
+export const enum MarshalType {
+  null = 0,
+  string = 1,
+  number = 2,
+  bigint = 3,
+  boolean = 4,
+  symbol = 5,
+  undefined = 6,
+  object = 7,
+  function = 8,
+
+  uint8array = 9,
+  array = 10,
+}
+
+export class TaggedValue {
+  value: any;
+  free_fn: (value: TaggedValue) => void;
+
+  constructor(
+    value: any,
+    free_fn: (value: TaggedValue) => void = TaggedValue.defaultFree
+  ) {
+    this.value = value;
+    this.free_fn = free_fn;
+  }
+
+  free() {
+    this.free_fn(this);
+  }
+
+  private static defaultFree(value: TaggedValue) {}
+}
+
+export class LuaFunction {
+  cart: Cart;
+  l: number;
+  handle: number;
+
+  constructor(cart: Cart, l: number, handle: number) {
+    this.cart = cart;
+    this.l = l;
+    this.handle = handle;
+  }
+
+  destroy() {
+    const cart_destroyFunction = this.cart.memory.exports![
+      "cart_destroyFunction"
+    ] as (l: number, f: number) => void;
+    cart_destroyFunction(this.l, this.handle);
+  }
+
+  callFn = (...args: any[]) => {
+    const cart_callFunction = this.cart.memory.exports![
+      "cart_callFunction"
+    ] as (l: number, f: number, args_ptr: number, args_len: number) => number;
+    const args_ptr = this.cart.memory.alloc(args.length * 4);
+    const args_handles = args.map((arg) => {
+      const handle = this.cart.alloc_handle();
+      this.cart.handles[handle] = new TaggedValue(arg);
+      return handle;
+    });
+    this.cart.memory.storeu32Array(args_ptr, new Uint32Array(args_handles));
+    const result = cart_callFunction(
+      this.l,
+      this.handle,
+      args_ptr,
+      args_handles.length
+    );
+    this.cart.memory.free(args_ptr);
+    for (const handle of args_handles) {
+      this.cart.free_handle(handle);
+    }
+    return this.cart.handles[result]?.value;
+  };
+}
+
 export class Cart {
   memory: Memory;
   wasi: WASI;
+
+  handles: Array<TaggedValue | undefined> = [
+    new TaggedValue(null),
+    new TaggedValue(undefined),
+    new TaggedValue(""),
+    new TaggedValue(true),
+    new TaggedValue(false),
+  ];
+  maxHandle: number = TaggedValueType.start;
+  freeHandles: Array<number> = [];
 
   constructor(options: CartOptions) {
     this.memory = options.memory || new Memory();
@@ -288,6 +489,8 @@ export class Cart {
           } catch (e) {
             if (e instanceof NativeException) {
               catch_js(ctx, e.ptr);
+            } else {
+              throw e;
             }
           }
         },
@@ -299,19 +502,12 @@ export class Cart {
             "cart_on_fetched_error"
           ];
 
-          const cart_alloc = self.memory.exports!["cart_alloc"] as (
-            size: number
-          ) => number;
-          const cart_free = self.memory.exports!["cart_free"] as (
-            ptr: number
-          ) => void;
-
           const url = self.memory.loadString(url_ptr, url_len);
           fetch(url)
             .then((response) => response.text())
             .then((text) => {
               // allocate a new buffer in the wasm memory
-              const ptr = cart_alloc(text.length);
+              const ptr = self.memory.alloc(text.length);
               if (ptr === 0) {
                 console.error("Failed to allocate memory for fetch response");
                 cart_on_fetched_error(context);
@@ -319,16 +515,296 @@ export class Cart {
               }
               self.memory.storeString(ptr, text);
               cart_on_fetched_success(context, ptr, text.length);
-              cart_free(ptr);
+              self.memory.free(ptr);
             })
             .catch((error) => {
               console.error(`Failed to fetch ${url}: ${error}`);
               cart_on_fetched_error(context);
             });
         },
+
+        // cart_web_as_number(handle: Handle, n: *f64) bool;
+        // cart_web_as_boolean(handle: Handle, b: *bool) bool;
+        // cart_web_as_buffer(handle: Handle, ptr: *?[*]const u8, len: *usize) bool;
+
+        cart_web_string(ptr: number, len: number): number {
+          if (len === 0) return TaggedValueType.empty_string;
+
+          const str = self.memory.loadString(ptr, len);
+          const handle = self.alloc_handle();
+          self.handles[handle] = new TaggedValue(str);
+          return handle;
+        },
+
+        cart_web_as_string(
+          handle: number,
+          str_ptr_ptr: number,
+          str_len_ptr: number
+        ): number {
+          const value = self.handles[handle]?.value;
+          if (value === undefined) {
+            return 0;
+          }
+          const str = value as string;
+          const str_ptr = self.memory.alloc(str.length);
+          self.memory.storeString(str_ptr, str);
+          self.memory.storeusize(str_len_ptr, str.length);
+          self.memory.storeusize(str_ptr_ptr, str_ptr);
+          return 1;
+        },
+
+        cart_web_number(value: number): number {
+          const handle = self.alloc_handle();
+          self.handles[handle] = new TaggedValue(value);
+          return handle;
+        },
+
+        cart_web_as_number(handle: number, ptr: number): number {
+          const value = self.handles[handle]?.value;
+          if (value === undefined) {
+            return 0;
+          }
+          const f64 = value as number;
+          self.memory.storef64(ptr, f64);
+          return 1;
+        },
+
+        cart_web_boolean(value: number): number {
+          return value !== 0 ? TaggedValueType.true : TaggedValueType.false;
+        },
+
+        cart_web_as_boolean(handle: number, ptr: number): number {
+          const value = self.handles[handle]?.value;
+          if (value === undefined) {
+            return 0;
+          }
+          const b = value as boolean;
+          self.memory.storebool8(ptr, b);
+          return 1;
+        },
+
+        cart_web_buffer(ptr: number, len: number): number {
+          const bytes = self.memory.loadBytes(ptr, len);
+          const handle = self.alloc_handle();
+          self.handles[handle] = new TaggedValue(bytes);
+          return handle;
+        },
+
+        cart_web_as_buffer(
+          handle: number,
+          ptr_ptr: number,
+          len_ptr: number
+        ): number {
+          const value = self.handles[handle]?.value;
+          if (value === undefined) {
+            return 0;
+          }
+          const bytes = value as Uint8Array;
+          const ptr = self.memory.alloc(bytes.length);
+          self.memory.storeBytes(ptr, bytes);
+          self.memory.storeusize(len_ptr, bytes.length);
+          self.memory.storeusize(ptr_ptr, ptr);
+          return 1;
+        },
+
+        cart_web_object(): number {
+          const handle = self.alloc_handle();
+          self.handles[handle] = new TaggedValue({});
+          return handle;
+        },
+
+        cart_web_array(): number {
+          const handle = self.alloc_handle();
+          self.handles[handle] = new TaggedValue([]);
+          return handle;
+        },
+
+        cart_web_free(handle: number) {
+          self.free_handle(handle);
+        },
+
+        cart_web_typeof(handle: number): number {
+          if (self.handles[handle]?.value === null) {
+            return MarshalType.null;
+          }
+          switch (typeof self.handles[handle]?.value) {
+            case "string":
+              return MarshalType.string;
+            case "number":
+              return MarshalType.number;
+            case "bigint":
+              return MarshalType.bigint;
+            case "boolean":
+              return MarshalType.boolean;
+            case "symbol":
+              return MarshalType.symbol;
+            case "undefined":
+              return MarshalType.undefined;
+            case "object":
+              if (self.handles[handle]?.value instanceof Array) {
+                return MarshalType.array;
+              }
+              if (self.handles[handle]?.value instanceof Uint8Array) {
+                return MarshalType.uint8array;
+              }
+              return MarshalType.object;
+            case "function":
+              return MarshalType.function;
+            default:
+              return MarshalType.undefined;
+          }
+        },
+
+        cart_web_get(handle: number, index: number): number {
+          const value = self.handles[handle]?.value;
+          if (value === undefined) {
+            return TaggedValueType.undefined;
+          }
+          const resolved_index = self.handles[index]?.value;
+          const returning = self.alloc_handle();
+          self.handles[returning] = new TaggedValue(value[resolved_index]);
+          return returning;
+        },
+
+        cart_web_set(handle: number, index: number, value: number) {
+          const obj = self.handles[handle]?.value;
+          if (obj === undefined) {
+            return;
+          }
+          obj[self.handles[index]?.value] = self.handles[value]?.value;
+        },
+
+        cart_web_call(
+          handle: number,
+          args_ptr: number,
+          args_len: number
+        ): number {
+          const func = self.handles[handle]?.value;
+          if (func === undefined) {
+            return TaggedValueType.undefined;
+          }
+          const args_handles = self.memory.loadu32Array(args_ptr, args_len);
+          const args = [];
+          for (let i = 0; i < args_len; i++) {
+            args.push(self.handles[args_handles[i]]?.value);
+          }
+          const result = func(...args);
+          const returning = self.alloc_handle();
+          self.handles[returning] = new TaggedValue(result);
+          return returning;
+        },
+
+        cart_web_invoke(
+          handle: number,
+          name_ptr: number,
+          name_len: number,
+          args_ptr: number,
+          args_len: number
+        ): number {
+          const obj = self.handles[handle]?.value;
+          if (obj === undefined) {
+            return TaggedValueType.undefined;
+          }
+          const name = self.memory.loadString(name_ptr, name_len);
+
+          const args_handles = self.memory.loadu32Array(args_ptr, args_len);
+          const args = [];
+          for (let i = 0; i < args_len; i++) {
+            let value = self.handles[args_handles[i]]?.value;
+            if (value instanceof LuaFunction) {
+              value = value.callFn;
+            }
+            args.push(value);
+          }
+          const result = obj[name](...args);
+          const returning = self.alloc_handle();
+          self.handles[returning] = new TaggedValue(result);
+          return returning;
+        },
+
+        cart_web_global(name_ptr: number, name_len: number): number {
+          const name = self.memory.loadString(name_ptr, name_len);
+          const handle = self.alloc_handle();
+          self.handles[handle] = new TaggedValue((globalThis as any)[name]);
+          return handle;
+        },
+
+        // takes a lua ref
+        cart_web_function(l: number, f: number): number {
+          const handle = self.alloc_handle();
+          self.handles[handle] = new TaggedValue(
+            new LuaFunction(self, l, f),
+            (v) => {
+              const func = v.value as LuaFunction;
+              func.destroy();
+            }
+          );
+          return handle;
+        },
       },
       wasi_snapshot_preview1: this.wasi.wasiImport,
     };
+  }
+
+  alloc_handle() {
+    if (this.freeHandles.length > 0) {
+      return this.freeHandles.pop()!;
+    }
+    const v = this.maxHandle;
+    this.maxHandle++;
+    return v;
+  }
+
+  free_handle(handle: number) {
+    if (this.handles[handle] !== undefined) {
+      this.handles[handle]!.free();
+    }
+    this.handles[handle] = undefined;
+    this.freeHandles.push(handle);
+  }
+
+  allocate(size: number): number {
+    const ptr = this.memory.exports!["cart_alloc"](size);
+    return ptr;
+  }
+
+  popLastError(): string | undefined {
+    const ptr = this.memory.exports!["cart_popLastError"]();
+    if (ptr === 0) return undefined;
+    const message = this.memory.loadZString(ptr);
+    return message;
+  }
+
+  loadThreadFromFile(path: string): LuauThread {
+    const cart_loadThreadFromFile = this.memory.exports![
+      "cart_loadThreadFromFile"
+    ] as (path_ptr: number, path_len: number) => number;
+    const path_ptr = this.memory.allocZString(path);
+    const thread_ptr = cart_loadThreadFromFile(path_ptr, path.length);
+    this.memory.free(path_ptr);
+    return new LuauThread(this, thread_ptr);
+  }
+
+  loadThreadFromString(path: string, source: string): LuauThread {
+    const cart_loadThreadFromString = this.memory.exports![
+      "cart_loadThreadFromString"
+    ] as (
+      path_ptr: number,
+      path_len: number,
+      source_ptr: number,
+      source_len: number
+    ) => number;
+    const path_ptr = this.memory.allocZString(path);
+    const source_ptr = this.memory.allocZString(source);
+    const thread_ptr = cart_loadThreadFromString(
+      path_ptr,
+      path.length,
+      source_ptr,
+      source.length
+    );
+    this.memory.free(path_ptr);
+    this.memory.free(source_ptr);
+    return new LuauThread(this, thread_ptr);
   }
 
   async load() {
@@ -338,7 +814,7 @@ export class Cart {
     await this.run(module);
   }
 
-  async run(
+  private async run(
     module: WebAssembly.Module,
     extra_imports: Record<string, any> = {}
   ) {

@@ -114,7 +114,7 @@ pub fn lRequire(l: *luau.Luau) !i32 {
     path = fixPath(t, path) catch l.argError(1, "failed to fix path");
     defer t.free(path);
 
-    std.log.info("require {s} from {s}", .{ path, source_location });
+    // std.log.info("require {s} from {s}", .{ path, source_location });
     const dirname = std.fs.path.dirname(source_location) orelse "";
 
     const modules = getModuleTable(context, l);

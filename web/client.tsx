@@ -1,6 +1,6 @@
 import type { Inode } from "@bjorn3/browser_wasi_shim";
 import { File } from "@bjorn3/browser_wasi_shim";
-import { Cart, CartOptions, Memory, stdIo } from "../packages/cart";
+import { Cart, CartOptions, LuauThread, Memory, stdIo } from "../packages/cart";
 
 const shared_mem = new Memory();
 
@@ -54,17 +54,22 @@ async function run() {
     throw new Error(`Failed to fetch example: ${response.statusText}`);
   }
   const contents = await response.text();
-  fs.set(example_name, new File(new TextEncoder().encode(contents)));
 
   cart = new Cart(
     new CartOptions({
       memory: shared_mem,
-      args: [example_name, ...example_args],
+      args: example_args,
       env: [],
       fds: stdIo("", fs),
     })
   );
   await cart.load();
+
+  const thread = cart.loadThreadFromString(example_name, contents);
+  if (!thread.valid) {
+    throw new Error("Failed to load example");
+  }
+  await thread.execute();
 }
 
 run();

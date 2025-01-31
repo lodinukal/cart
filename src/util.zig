@@ -40,5 +40,22 @@ pub fn tostring(l: *luau.Luau, index: i32) ![:0]const u8 {
     return str;
 }
 
+pub fn dumpstack(l: *luau.Luau) void {
+    l.checkStack(3) catch unreachable;
+    const top = l.getTop();
+    const bottom = 1;
+    _ = l.getGlobal("tostring");
+    var i: i32 = top;
+    while (i >= bottom) : (i -= 1) {
+        l.pushValue(-1);
+        l.pushValue(@intCast(i));
+        l.pcall(1, 1, 0) catch unreachable;
+        const str = l.toString(-1) catch l.typeNameIndex(@intCast(i));
+        std.log.info("{d}: {s}", .{ i, str });
+        l.pop(1);
+    }
+    l.pop(1);
+}
+
 const std = @import("std");
 const luau = @import("luau");

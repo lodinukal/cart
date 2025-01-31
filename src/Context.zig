@@ -99,6 +99,7 @@ pub const modules = struct {
     pub const sys = @import("standard/sys.zig");
     pub const task = @import("standard/task.zig");
     pub const net = @import("standard/net.zig");
+    pub const web = @import("standard/web.zig");
 };
 
 pub const CART_MODULES: []const Module = &[_]Module{
@@ -108,6 +109,7 @@ pub const CART_MODULES: []const Module = &[_]Module{
     .{ .name = "sys", .open = modules.sys.open },
     .{ .name = "task", .open = modules.task.open },
     .{ .name = "net", .open = modules.net.open },
+    .{ .name = "web", .open = modules.web.open },
 };
 
 pub fn loadCartStandard(self: *Self) !void {
@@ -123,7 +125,7 @@ pub fn loadLibrary(self: *Self, comptime alias: []const u8, comptime m: []const 
 
         const qualified_name = "@" ++ alias ++ "/" ++ name;
         self.main_state.setField(module_table, qualified_name);
-        std.log.info("Loaded cart library: {s} -> {s}", .{ name, qualified_name });
+        // std.log.info("Loaded cart library: {s} -> {s}", .{ name, qualified_name });
     }
 }
 
@@ -209,6 +211,12 @@ pub fn getSourceLocation(thread: *luau.Luau) []const u8 {
 /// utility function to load a thread from a file
 pub fn loadThreadFromFile(self: *Self, path: []const u8) Error!*luau.Luau {
     const bytecode = try self.loadBytecodeFromFile(path, .{});
+    return self.loadThread(path, bytecode);
+}
+
+/// utility function to load a thread from a string
+pub fn loadThreadFromString(self: *Self, path: []const u8, source: []const u8) Error!*luau.Luau {
+    const bytecode = try self.loadBytecodeFromString(source, .{});
     return self.loadThread(path, bytecode);
 }
 

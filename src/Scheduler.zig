@@ -119,6 +119,7 @@ pub fn poll(self: *Self, cart_context: *CartContext) Error!void {
         }
 
         if (keeping) {
+            // std.log.info("keeping {}", .{1});
             try self.schedule(thread.*);
         } else {
             // dereferencing the thread

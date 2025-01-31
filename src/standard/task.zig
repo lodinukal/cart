@@ -26,7 +26,7 @@ pub fn open(l: *luau.Luau) void {
 
 fn lWait(l: *luau.Luau) !i32 {
     const context = Context.getContext(l) orelse return 0;
-    const time_wait = if (l.getTop() < 1) l.optNumber(1) orelse 0.0 else 0.0;
+    const time_wait = if (l.getTop() < 1) 0.0 else try l.toNumber(1);
     try context.scheduler.schedule(try Scheduler.Thread.init(.time(time_wait), l, l));
     return l.yield(1);
 }
