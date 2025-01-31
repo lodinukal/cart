@@ -8,7 +8,7 @@ TODO:
   - [x] fetch
   - [ ] websocket
   - [ ] server
-- [ ] @cart/web implementation
+- [x] @cart/web implementation
 - [ ] @cart/json implementation
 - [ ] Add more examples
 - [ ] Automate js package building (currently a batch script with copy)
