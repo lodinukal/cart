@@ -9,6 +9,10 @@ TODO:
   - [ ] websocket
   - [ ] server
 - [x] @cart/web implementation
+- [ ] @cart/process implementation
+  - [x] basic process spawning
+  - [ ] asyncify :wait()
+  - [ ] io redirection
 - [ ] @cart/json implementation
 - [ ] Add more examples
 - [ ] Automate js package building (currently a batch script with copy)

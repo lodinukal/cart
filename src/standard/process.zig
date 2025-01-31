@@ -36,6 +36,7 @@ pub const LChild = struct {
         l.setMetatable(-2);
         lchild.child = child;
         lchild.term = null;
+
         return lchild;
     }
 
@@ -183,9 +184,8 @@ fn lSpawn(l: *luau.Luau) !i32 {
                 l.pop(1);
             }
         },
-        .none => {},
         else => {
-            l.argError(2, "expected table or no argument");
+            l.argError(2, "expected table");
         },
     }
 

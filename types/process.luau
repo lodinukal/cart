@@ -1,8 +1,18 @@
 --!strict
 local process = {}
 
+export type IoBehavior = "inherit" | "ignore" | "pipe"
+
+export type SpawnOptions = {
+	cwd: string?,
+	env: { string: string }?,
+	stdin: IoBehavior?,
+	stdout: IoBehavior?,
+	stderr: IoBehavior?,
+}
+
 export type Term = {
-	type: "Exited" | "Signal" | "Stopped" | "Unknown",
+	type: "exited" | "signal" | "stopped" | "unknown",
 	code: number,
 }
 
@@ -25,9 +35,10 @@ function process.exit(code: number?)
 	local _ = code
 end
 
-function process.spawn(name: string, args: { string }): Child
+function process.spawn(name: string, args: { string }?, options: SpawnOptions?): Child
 	local _ = name
 	local _ = args
+	local _ = options
 	return nil :: any
 end
 
