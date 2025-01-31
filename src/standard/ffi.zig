@@ -572,6 +572,9 @@ const LDynLib = struct {
 
             l.pushFunction(lGet, "get");
             l.setField(-2, "get");
+
+            l.pushFunction(lLoad, "load");
+            l.setField(-2, "load");
         }
     }
 
@@ -601,6 +604,25 @@ const LDynLib = struct {
             l.raiseErrorFmt("dynlib already closed", .{}) catch unreachable;
         }
         return 0;
+    }
+
+    pub fn lLoad(l: *luau.Luau) !i32 {
+        const self = l.checkUserdata(LDynLib, 1, DYNLIB_METATABLE);
+        const symbol = l.toString(2) catch l.argError(2, "expected name of symbol");
+
+        const dynlib = &(self.dynlib orelse (l.raiseErrorFmt("dynlib already closed", .{}) catch unreachable));
+        const sym = dynlib.lookup(*const fn (l: *luau.Luau) callconv(.c) i32, symbol) orelse {
+            l.pushNil();
+            return 1;
+        };
+
+        std.log.info("sym; {*}", .{sym});
+        const rets = sym(l);
+        if (rets < 0) {
+            l.raiseErrorFmt("failed to load symbol: {s}", .{symbol}) catch unreachable;
+        }
+
+        return rets;
     }
 
     pub fn lGet(l: *luau.Luau) !i32 {

@@ -100,6 +100,7 @@ pub const modules = struct {
     pub const task = @import("standard/task.zig");
     pub const net = @import("standard/net.zig");
     pub const web = @import("standard/web.zig");
+    pub const process = @import("standard/process.zig");
 };
 
 pub const CART_MODULES: []const Module = &[_]Module{
@@ -110,6 +111,7 @@ pub const CART_MODULES: []const Module = &[_]Module{
     .{ .name = "task", .open = modules.task.open },
     .{ .name = "net", .open = modules.net.open },
     .{ .name = "web", .open = modules.web.open },
+    .{ .name = "process", .open = modules.process.open },
 };
 
 pub fn loadCartStandard(self: *Self) !void {

@@ -9,7 +9,7 @@
       "type": "cppvsdbg",
       "request": "launch",
       "program": "${workspaceFolder}/zig-out/bin/cart.exe",
-      "args": ["./examples/net.luau"],
+      "args": ["./examples/bench_dynlib.luau"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],

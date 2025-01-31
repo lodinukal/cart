@@ -1,6 +1,6 @@
-local sys = require("@cart/sys")
+local process = require("@cart/process")
 
-local args = sys.argv()
+local args = process.argv()
 for i, arg in ipairs(args) do
 	print(i, arg)
 end

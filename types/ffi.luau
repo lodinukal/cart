@@ -50,6 +50,10 @@ export type Dynlib = {
 	--- @param ret CType the return type of the function
 	--- @param ...CType the arguments of the function
 	get: <T>(self: Dynlib, name: string, ret: CType, ...CType) -> T?,
+	--- Loads a function with a signature like: (l: *LuauState) -> i32, where an error is < 0 and passes the current state.
+	--- This can return anything as given by the resulting function.
+	--- @param name string the name of the function
+	load: <T>(self: Dynlib, name: string) -> T,
 	--- Closes a dynamic library.
 	close: (self: Dynlib) -> (),
 }

@@ -75,6 +75,17 @@ pub fn build(b: *std.Build) void {
         .root_module = lib_mod,
     });
 
+    if (!target.result.isWasm()) {
+        const shared_test = b.addSharedLibrary(.{
+            .name = "shared_test",
+            .root_source_file = b.path("src/shared_test.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        shared_test.root_module.addImport("luau", luau_dep.module("luau"));
+        b.installArtifact(shared_test);
+    }
+
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
     // running `zig build`).
