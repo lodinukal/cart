@@ -48,9 +48,10 @@ jobs:
             target: aarch64-linux-gnu
             artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64
             shared: false
-          - name: linux RISCV64
-            target: riscv64-linux
-            artifact: cart-${{ needs.prep.outputs.version }}-linux-riscv64
+          # - name: linux RISCV64
+          #   target: riscv64-linux
+          #   artifact: cart-${{ needs.prep.outputs.version }}-linux-riscv64
+          #   shared: false
           - name: shared windows x86_64
             target: x86_64-windows
             artifact: cart-${{ needs.prep.outputs.version }}-shared-windows-x86_64
