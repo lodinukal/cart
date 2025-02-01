@@ -3,7 +3,7 @@ const std = @import("std");
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     var wasm_cpu_set: std.Target.Cpu.Feature.Set = .empty;
     wasm_cpu_set.addFeature(@intFromEnum(std.Target.wasm.Feature.atomics));
     wasm_cpu_set.addFeatureSet(std.Target.wasm.cpu.bleeding_edge.features);
@@ -31,6 +31,8 @@ pub fn build(b: *std.Build) void {
 
     const config = b.addOptions();
     config.addOption(bool, "shared_luau", shared_luau);
+    const version = try Version.init(b);
+    config.addOption(std.SemanticVersion, "version", version.version);
 
     const lib_mod = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
@@ -176,4 +178,35 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+
+    const version_step = b.step("version", "Get build version");
+    version_step.dependOn(&version.step);
 }
+
+const Version = struct {
+    step: std.Build.Step,
+    version: std.SemanticVersion,
+
+    pub fn init(b: *std.Build) !*Version {
+        var tree = try std.zig.Ast.parse(b.allocator, @embedFile("build.zig.zon"), .zon);
+        defer tree.deinit(b.allocator);
+
+        const version = tree.tokenSlice(tree.nodes.items(.main_token)[2]);
+        const semantic_version = try std.SemanticVersion.parse(version[1 .. version.len - 1]);
+
+        const self = b.allocator.create(Version) catch @panic("OOM");
+        self.step = std.Build.Step.init(.{
+            .name = "version",
+            .id = .custom,
+            .owner = b,
+            .makeFn = Version.make,
+        });
+        self.version = semantic_version;
+        return self;
+    }
+
+    pub fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
+        const self: *Version = @fieldParentPtr("step", step);
+        try std.io.getStdOut().writer().print("{}\n", .{self.version});
+    }
+};
