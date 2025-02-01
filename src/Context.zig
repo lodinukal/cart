@@ -1,6 +1,6 @@
 const Self = @This();
 
-pub const Error = Scheduler.Error || luau.Error || Platform.Error || error{};
+pub const Error = Scheduler.Error || luau.Error || Platform.Error || std.fs.File.ReadError || error{StreamTooLong};
 const CART_GLOBAL_NAME = "__CART";
 const MAX_NATIVE_ALIASES = 16;
 
@@ -163,19 +163,18 @@ pub fn loadBytecodeFromFile(self: *Self, path: []const u8, options: luau.Compile
     });
     defer self.platform.closeFile(got);
 
-    const t = self.temp.allocator();
     const reader = try got.reader(self.platform);
-    const source = reader.readAllAlloc(t, std.math.maxInt(u16)) catch return error.OutOfMemory;
+    const source = try reader.readAllAlloc(self.allocator, std.math.maxInt(u16));
+    defer self.allocator.free(source);
 
-    return try luau.compile(t, source, options);
+    return try luau.compile(self.allocator, source, options);
 }
 
 /// loads bytecode from string
 ///
 /// result is temporary, dupe if needed
 pub fn loadBytecodeFromString(self: *Self, source: []const u8, options: luau.CompileOptions) Error![]const u8 {
-    const t = self.temp.allocator();
-    return try luau.compile(t, source, options);
+    return try luau.compile(self.allocator, source, options);
 }
 
 pub const SOURCE_GLOBAL_NAME = "__SOURCE";
@@ -217,12 +216,14 @@ pub fn getSourceLocation(thread: *luau.Luau) []const u8 {
 /// utility function to load a thread from a file
 pub fn loadThreadFromFile(self: *Self, path: []const u8) Error!*luau.Luau {
     const bytecode = try self.loadBytecodeFromFile(path, .{});
+    defer self.allocator.free(bytecode);
     return self.loadThread(path, bytecode);
 }
 
 /// utility function to load a thread from a string
 pub fn loadThreadFromString(self: *Self, path: []const u8, source: []const u8) Error!*luau.Luau {
     const bytecode = try self.loadBytecodeFromString(source, .{});
+    defer self.allocator.free(bytecode);
     return self.loadThread(path, bytecode);
 }
 
