@@ -107,7 +107,7 @@ jobs:
         run: zig build -Dshared=${{ matrix.shared }} -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
 
       - name: Pack Artifact
-        run: cd ./zig-out/bin && zip ../../${{ matrix.artifact }}.zip ./cart${{ matrix.ext }} ${{ matrix.extra-files }}
+        run: cd ./zig-out/bin && zip -r ../../${{ matrix.artifact }}.zip ./cart${{ matrix.ext }} ${{ matrix.extra-files }} ../../types
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
