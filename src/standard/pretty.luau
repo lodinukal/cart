@@ -12,7 +12,7 @@ export type PrintOptions = {
 }
 
 function pretty.print(value: any, options: PrintOptions): string
-	local current_depth = options.current_depth or 0
+	local current_depth = options.current_depth or 1
 	local indent = options.indent or "\t"
 	local visited_tables = options.visited_tables or {}
 
