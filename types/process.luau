@@ -18,6 +18,7 @@ export type Term = {
 }
 
 export type Child = {
+	--- async only on non wasi targets, otherwise sync
 	wait: (self: Child) -> Term,
 	kill: (self: Child) -> (),
 	term: (self: Child) -> Term?,

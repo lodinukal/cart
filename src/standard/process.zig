@@ -198,7 +198,12 @@ pub fn pushTerm(l: *luau.Luau, term: std.process.Child.Term) void {
 
     switch (term) {
         inline else => |code, tag| {
-            l.pushString(@tagName(tag));
+            l.pushString(switch (tag) {
+                .Exited => "exited",
+                .Signal => "signal",
+                .Stopped => "stopped",
+                .Unknown => "unknown",
+            });
             l.setField(-2, "type");
             l.pushInteger(@intCast(code));
             l.setField(-2, "code");
