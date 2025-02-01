@@ -27,12 +27,9 @@
             .url = "git+https://github.com/vezel-dev/libffi.git#4ff4784890761375208c9efa197cfe3774c5fd0e",
             .hash = "1220cfa2f61bdac1107a04b376f0a64160b474736326c00ba64f53a02062419073df",
         },
-        // .luau = .{
-        //     .url = "git+https://github.com/lodinukal/zig-luau#a35213d7287fa27553cf05ec64ba918c755535df",
-        //     .hash = "122055473374ce818d6ad854eb406f76506696ce39894c76276e7e1553091363d288",
-        // },
         .luau = .{
-            .path = "../zig-luau",
+            .url = "git+https://github.com/lodinukal/zig-luau#934a464de22f30dcfef377de72509fc845657c6d",
+            .hash = "122078254b0e8237dca1124f0f3424b83ccc0c53374c7224edfd8bcd031515b2020c",
         },
     },
     .paths = .{
