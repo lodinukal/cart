@@ -60,6 +60,8 @@ pub fn init(self: *Self) Error!void {
     luau_state.open(self.options.luau_libs);
     luau_state.openCoroutine();
 
+    luau_state.setGlobalFn("collectgarbage", lCollectGarbage);
+
     self.* = .{
         .rc = self.rc,
         .allocator = self.allocator,
@@ -85,6 +87,28 @@ pub fn deinit(self: *Self) void {
     self.temp.deinit(self.allocator);
     self.require.deinit(self.allocator);
     self.main_state.deinit();
+}
+
+fn lCollectGarbage(l: *luau.Luau) !i32 {
+    const option = l.optString(1) orelse "collect";
+
+    const CollectOptions = enum {
+        collect,
+        count,
+    };
+    const opt = std.meta.stringToEnum(CollectOptions, option) orelse
+        return error.@"collectgarbage must be called with 'count' or 'collect'";
+
+    switch (opt) {
+        .collect => {
+            l.gcCollect();
+            return 0;
+        },
+        .count => {
+            l.pushInteger(l.gcCount());
+            return 1;
+        },
+    }
 }
 
 pub const Module = struct {

@@ -1,0 +1,1 @@
+print(collectgarbage("count"))
