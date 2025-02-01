@@ -34,18 +34,18 @@ jobs:
         include:
           - name: shared linux x86_64
             target: x86_64-linux-gnu
-            artifact: cart-${{ needs.prep.outputs.version }}-shared-linux-x86_64
+            artifact: cart-${{ needs.prep.outputs.version }}linux-x86_64-shared
             shared: true
-            extra-files: ../lib/libluau.*
+            extra-files: libluau.*
           - name: linux x86_64
             target: x86_64-linux-gnu
             artifact: cart-${{ needs.prep.outputs.version }}-linux-x86_64
             shared: false
           # - name: shared linux arm64
           #   target: aarch64-linux-gnu
-          #   artifact: cart-${{ needs.prep.outputs.version }}-shared-linux-aarch64
+          #   artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64-shared
           #   shared: true
-          #   extra-files: ./luau.so
+          #   extra-files: luau.so
           # - name: linux arm64
           #   target: aarch64-linux-gnu
           #   artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64
@@ -56,10 +56,10 @@ jobs:
           #   shared: false
           - name: shared windows x86_64
             target: x86_64-windows
-            artifact: cart-${{ needs.prep.outputs.version }}-shared-windows-x86_64
+            artifact: cart-${{ needs.prep.outputs.version }}-windows-x86_64-shared
             ext: .exe
             shared: true
-            extra-files: ./luau.dll
+            extra-files: luau.dll
           - name: windows x86_64
             target: x86_64-windows
             artifact: cart-${{ needs.prep.outputs.version }}-windows-x86_64
@@ -67,10 +67,10 @@ jobs:
             shared: false
           # - name: shared windows arm64
           #   target: aarch64-windows
-          #   artifact: cart-${{ needs.prep.outputs.version }}-shared-windows-aarch64
+          #   artifact: cart-${{ needs.prep.outputs.version }}-windows-aarch64-shared
           #   ext: .exe
           #   shared: true
-          #   extra-files: ./luau.dll
+          #   extra-files: luau.dll
           # - name: windows arm64
           #   target: aarch64-windows
           #   artifact: cart-${{ needs.prep.outputs.version }}-windows-aarch64
@@ -78,9 +78,9 @@ jobs:
           #   shared: false
           - name: shared macos arm64
             target: aarch64-macos
-            artifact: cart-${{ needs.prep.outputs.version }}-shared-macos-aarch64
+            artifact: cart-${{ needs.prep.outputs.version }}-macos-aarch64-shared
             shared: true
-            extra-files: ../lib/libluau.*
+            extra-files: libluau.*
           - name: macos arm64
             target: aarch64-macos
             artifact: cart-${{ needs.prep.outputs.version }}-macos-aarch64
@@ -106,8 +106,11 @@ jobs:
       - name: Build
         run: zig build -Dshared=${{ matrix.shared }} -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
 
+      - name: Copy binaries to root
+        run: cp ./zig-out/bin/* ./ && cp ./zig-out/lib/* ./
+
       - name: Pack Artifact
-        run: cd ./zig-out/bin && zip -r ../../${{ matrix.artifact }}.zip ./cart${{ matrix.ext }} ${{ matrix.extra-files }} ../../types
+        run: zip -r ${{ matrix.artifact }}.zip ./cart${{ matrix.ext }} ${{ matrix.extra-files }} types .luaurc
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

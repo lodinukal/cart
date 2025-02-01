@@ -161,7 +161,6 @@ pub fn parseFetchOptions(l: *luau.Luau, index: i32, allocator: std.mem.Allocator
         .nil => {},
         else => return .{},
     }
-    l.pop(1);
 
     if (l.getField(index, "body") == .nil) l.pushString("");
     const body = l.toString(-1) catch return error.InvalidBody;
