@@ -34,22 +34,22 @@ jobs:
         include:
           - name: shared linux x86_64
             target: x86_64-linux-gnu
-            artifact: cart-${{ needs.prep.outputs.version }}linux-x86_64-shared
+            artifact: cart-${{ needs.prep.outputs.version }}-linux-x86_64-shared
             shared: true
             extra-files: libluau.*
           - name: linux x86_64
             target: x86_64-linux-gnu
             artifact: cart-${{ needs.prep.outputs.version }}-linux-x86_64
             shared: false
-          # - name: shared linux arm64
-          #   target: aarch64-linux-gnu
-          #   artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64-shared
-          #   shared: true
-          #   extra-files: luau.so
-          # - name: linux arm64
-          #   target: aarch64-linux-gnu
-          #   artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64
-          #   shared: false
+          - name: shared linux arm64
+            target: aarch64-linux-gnu
+            artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64-shared
+            shared: true
+            extra-files: luau.so
+          - name: linux arm64
+            target: aarch64-linux-gnu
+            artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64
+            shared: false
           # - name: linux RISCV64
           #   target: riscv64-linux
           #   artifact: cart-${{ needs.prep.outputs.version }}-linux-riscv64
@@ -65,17 +65,17 @@ jobs:
             artifact: cart-${{ needs.prep.outputs.version }}-windows-x86_64
             ext: .exe
             shared: false
-          # - name: shared windows arm64
-          #   target: aarch64-windows
-          #   artifact: cart-${{ needs.prep.outputs.version }}-windows-aarch64-shared
-          #   ext: .exe
-          #   shared: true
-          #   extra-files: luau.dll
-          # - name: windows arm64
-          #   target: aarch64-windows
-          #   artifact: cart-${{ needs.prep.outputs.version }}-windows-aarch64
-          #   ext: .exe
-          #   shared: false
+          - name: shared windows arm64
+            target: aarch64-windows
+            artifact: cart-${{ needs.prep.outputs.version }}-windows-aarch64-shared
+            ext: .exe
+            shared: true
+            extra-files: luau.dll
+          - name: windows arm64
+            target: aarch64-windows
+            artifact: cart-${{ needs.prep.outputs.version }}-windows-aarch64
+            ext: .exe
+            shared: false
           - name: shared macos arm64
             target: aarch64-macos
             artifact: cart-${{ needs.prep.outputs.version }}-macos-aarch64-shared
