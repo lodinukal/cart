@@ -36,18 +36,20 @@ jobs:
             target: x86_64-linux-gnu
             artifact: cart-${{ needs.prep.outputs.version }}-shared-linux-x86_64
             shared: true
+            extra-files: ./luau.so
           - name: linux x86_64
             target: x86_64-linux-gnu
             artifact: cart-${{ needs.prep.outputs.version }}-linux-x86_64
             shared: false
-          - name: shared linux arm64
-            target: aarch64-linux-gnu
-            artifact: cart-${{ needs.prep.outputs.version }}-shared-linux-aarch64
-            shared: true
-          - name: linux arm64
-            target: aarch64-linux-gnu
-            artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64
-            shared: false
+          # - name: shared linux arm64
+          #   target: aarch64-linux-gnu
+          #   artifact: cart-${{ needs.prep.outputs.version }}-shared-linux-aarch64
+          #   shared: true
+          #   extra-files: ./luau.so
+          # - name: linux arm64
+          #   target: aarch64-linux-gnu
+          #   artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64
+          #   shared: false
           # - name: linux RISCV64
           #   target: riscv64-linux
           #   artifact: cart-${{ needs.prep.outputs.version }}-linux-riscv64
@@ -57,33 +59,28 @@ jobs:
             artifact: cart-${{ needs.prep.outputs.version }}-shared-windows-x86_64
             ext: .exe
             shared: true
+            extra-files: ./luau.dll
           - name: windows x86_64
             target: x86_64-windows
             artifact: cart-${{ needs.prep.outputs.version }}-windows-x86_64
             ext: .exe
             shared: false
-          - name: shared windows arm64
-            target: aarch64-windows
-            artifact: cart-${{ needs.prep.outputs.version }}-shared-windows-aarch64
-            ext: .exe
-            shared: true
-          - name: windows arm64
-            target: aarch64-windows
-            artifact: cart-${{ needs.prep.outputs.version }}-windows-aarch64
-            ext: .exe
-            shared: false
-          - name: shared macos x86_64
-            target: x86_64-macos
-            artifact: cart-${{ needs.prep.outputs.version }}-macos-x86_64
-            shared: true
-          - name: macos x86_64
-            target: x86_64-macos
-            artifact: cart-${{ needs.prep.outputs.version }}-macos-x86_64
-            shared: false
+          # - name: shared windows arm64
+          #   target: aarch64-windows
+          #   artifact: cart-${{ needs.prep.outputs.version }}-shared-windows-aarch64
+          #   ext: .exe
+          #   shared: true
+          #   extra-files: ./luau.dll
+          # - name: windows arm64
+          #   target: aarch64-windows
+          #   artifact: cart-${{ needs.prep.outputs.version }}-windows-aarch64
+          #   ext: .exe
+          #   shared: false
           - name: shared macos arm64
             target: aarch64-macos
             artifact: cart-${{ needs.prep.outputs.version }}-shared-macos-aarch64
             shared: true
+            extra-files: ./luau.dylib
           - name: macos arm64
             target: aarch64-macos
             artifact: cart-${{ needs.prep.outputs.version }}-macos-aarch64
@@ -110,7 +107,7 @@ jobs:
         run: zig build -Dshared=${{ matrix.shared }} -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
 
       - name: Pack Artifact
-        run: cd ./zig-out/bin && zip ../../${{ matrix.artifact }}.zip ./cart${{ matrix.ext }}
+        run: cd ./zig-out/bin && zip ../../${{ matrix.artifact }}.zip ./cart${{ matrix.ext }} ${{ matrix.extra-files }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
