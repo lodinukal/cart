@@ -13,10 +13,16 @@ export type PermissionGroup = "user" | "group" | "other"
 export type OpenMode = "read_only" | "write_only" | "read_write"
 export type Lock = "none" | "shared" | "exclusive"
 
-export type FileFlags = {
+export type OpenFlags = {
 	open_mode: OpenMode?,
 	lock: Lock?,
 	create_if_not_exists: boolean?,
+}
+
+export type CreateFlags = {
+	open_mode: OpenMode?,
+	lock: Lock?,
+	exclusive: boolean?,
 	truncate_if_exists: boolean?,
 }
 
@@ -41,7 +47,13 @@ export type File = {
 	writer: (self: File) -> io.Writer,
 }
 
-function fs.open_file(path: string, flags: FileFlags): File
+function fs.create_file(path: string, flags: CreateFlags): File
+	local _ = path
+	local _ = flags
+	return nil :: any
+end
+
+function fs.open_file(path: string, flags: OpenFlags): File
 	local _ = path
 	local _ = flags
 	return nil :: any

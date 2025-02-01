@@ -1,6 +1,7 @@
 const Self = @This();
 
 const vtable: Platform.VTable = .{
+    .create_file_impl = createFile,
     .open_file_impl = openFile,
     .close_file_impl = closeFile,
     .delete_file_impl = deleteFile,
@@ -28,17 +29,36 @@ pub fn platform() Platform {
     };
 }
 
-pub fn openFile(_: ?*anyopaque, path: []const u8, flags: File.Flags) File.Error!File {
-    if (flags.truncate_if_exists) {
-        return createFile(path, flags);
-    }
+pub fn createFile(_: ?*anyopaque, path: []const u8, flags: File.CreateFlags) File.Error!File {
+    const file = std.fs.cwd().createFile(path, .{
+        .read = switch (flags.mode) {
+            .read_only => true,
+            .write_only => false,
+            .read_write => false,
+        },
+        .lock = flags.lock,
+        .exclusive = flags.exclusive,
+        .truncate = flags.truncate_if_exists,
+    }) catch |err| switch (err) {
+        error.PathAlreadyExists => return error.PathAlreadyExists,
+        error.AccessDenied => return error.AccessDenied,
+        error.SharingViolation => return error.SharingViolation,
+        else => return error.Unknown,
+    };
+    return nativeFileToPlatformFile(file);
+}
+
+pub fn openFile(ctx: ?*anyopaque, path: []const u8, flags: File.OpenFlags) File.Error!File {
     return nativeFileToPlatformFile(std.fs.cwd().openFile(path, .{
         .mode = flags.mode,
         .lock = flags.lock,
     }) catch |err| switch (err) {
         error.FileNotFound => {
             if (flags.create_if_not_exists) {
-                return createFile(path, flags);
+                return createFile(ctx, path, .{
+                    .mode = flags.mode,
+                    .lock = flags.lock,
+                });
             } else {
                 return error.FileNotFound;
             }
@@ -47,23 +67,6 @@ pub fn openFile(_: ?*anyopaque, path: []const u8, flags: File.Flags) File.Error!
         error.SharingViolation => return error.SharingViolation,
         else => return error.Unknown,
     });
-}
-
-fn createFile(path: []const u8, flags: File.Flags) File.Error!File {
-    const file = std.fs.cwd().createFile(path, .{
-        .read = switch (flags.mode) {
-            .read_only => true,
-            .write_only => false,
-            .read_write => false,
-        },
-        .lock = flags.lock,
-    }) catch |err| switch (err) {
-        error.PathAlreadyExists => unreachable,
-        error.AccessDenied => return error.AccessDenied,
-        error.SharingViolation => return error.SharingViolation,
-        else => return error.Unknown,
-    };
-    return nativeFileToPlatformFile(file);
 }
 
 pub fn closeFile(_: ?*anyopaque, file: File) void {

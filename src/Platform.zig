@@ -3,7 +3,8 @@ const Self = @This();
 pub const Error = File.Error || Request.Error || HttpClient.Error;
 
 pub const VTable = struct {
-    open_file_impl: *const fn (ctx: ?*anyopaque, path: []const u8, flags: File.Flags) File.Error!File,
+    create_file_impl: *const fn (ctx: ?*anyopaque, path: []const u8, flags: File.CreateFlags) File.Error!File,
+    open_file_impl: *const fn (ctx: ?*anyopaque, path: []const u8, flags: File.OpenFlags) File.Error!File,
     close_file_impl: *const fn (ctx: ?*anyopaque, file: File) void,
     delete_file_impl: *const fn (ctx: ?*anyopaque, path: []const u8) File.Error!void,
     file_exists_impl: *const fn (ctx: ?*anyopaque, path: []const u8) bool,
@@ -30,7 +31,11 @@ pub const VTable = struct {
 vtable: *const VTable,
 context: ?*anyopaque,
 
-pub inline fn openFile(self: Self, path: []const u8, flags: File.Flags) File.Error!File {
+pub inline fn createFile(self: Self, path: []const u8, flags: File.CreateFlags) File.Error!File {
+    return self.vtable.create_file_impl(self.context, path, flags);
+}
+
+pub inline fn openFile(self: Self, path: []const u8, flags: File.OpenFlags) File.Error!File {
     return self.vtable.open_file_impl(self.context, path, flags);
 }
 
@@ -63,15 +68,23 @@ pub const File = struct {
 
     pub const Error = error{
         FileNotFound,
+        PathAlreadyExists,
         AccessDenied,
         SharingViolation,
         Unknown,
     };
-    pub const Flags = struct {
+
+    pub const CreateFlags = struct {
+        mode: std.fs.File.OpenMode = .read_only,
+        lock: std.fs.File.Lock = .none,
+        exclusive: bool = false,
+        truncate_if_exists: bool = false,
+    };
+
+    pub const OpenFlags = struct {
         mode: std.fs.File.OpenMode = .read_only,
         lock: std.fs.File.Lock = .none,
         create_if_not_exists: bool = true,
-        truncate_if_exists: bool = false,
     };
 
     pub inline fn reader(self: File, platform: Self) File.Error!std.fs.File.Reader {

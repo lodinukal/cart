@@ -118,6 +118,10 @@ pub fn open(l: *luau.Luau) void {
 
     l.newTable();
 
+    l.pushString("create_file");
+    l.pushFunction(lCreateFile, "@cart/fs.create_file");
+    l.setTable(-3);
+
     l.pushString("open_file");
     l.pushFunction(lOpenFile, "@cart/fs.open_file");
     l.setTable(-3);
@@ -129,7 +133,7 @@ pub fn open(l: *luau.Luau) void {
     l.setReadOnly(-1, true);
 }
 
-pub fn parseFileFlags(l: *luau.Luau, index: i32) !Platform.File.Flags {
+pub fn parseOpenFlags(l: *luau.Luau, index: i32) !Platform.File.OpenFlags {
     // get table
     if (l.typeOf(index) != .table) return .{};
     _ = l.getField(index, "open_mode");
@@ -143,18 +147,39 @@ pub fn parseFileFlags(l: *luau.Luau, index: i32) !Platform.File.Flags {
     _ = l.getField(index, "create_if_not_exists");
     const create_if_not_exists = l.optBoolean(-1) orelse true;
 
+    return .{
+        .mode = open_mode,
+        .lock = lock,
+        .create_if_not_exists = create_if_not_exists,
+    };
+}
+
+pub fn parseCreateFlags(l: *luau.Luau, index: i32) !Platform.File.CreateFlags {
+    // get table
+    if (l.typeOf(index) != .table) return .{};
+    _ = l.getField(index, "open_mode");
+    const open_mode = try util.parseStringAsEnum(std.fs.File.OpenMode, l, -1, .read_only);
+    l.pop(1);
+
+    _ = l.getField(index, "lock");
+    const lock = try util.parseStringAsEnum(std.fs.File.Lock, l, -1, .none);
+    l.pop(1);
+
+    _ = l.getField(index, "exclusive");
+    const exclusive = l.optBoolean(-1) orelse false;
+
     _ = l.getField(index, "truncate_if_exists");
     const truncate_if_exists = l.optBoolean(-1) orelse false;
 
     return .{
         .mode = open_mode,
         .lock = lock,
-        .create_if_not_exists = create_if_not_exists,
+        .exclusive = exclusive,
         .truncate_if_exists = truncate_if_exists,
     };
 }
 
-pub fn pushFileFlags(l: *luau.Luau, flags: Platform.File.Flags) void {
+pub fn pushOpenFlags(l: *luau.Luau, flags: Platform.File.OpenFlags) void {
     l.newTable();
 
     l.pushString("open_mode");
@@ -167,6 +192,22 @@ pub fn pushFileFlags(l: *luau.Luau, flags: Platform.File.Flags) void {
 
     l.pushString("create_if_not_exists");
     l.pushBoolean(flags.create_if_not_exists);
+    l.setTable(-3);
+}
+
+pub fn pushCreateFlags(l: *luau.Luau, flags: Platform.File.CreateFlags) void {
+    l.newTable();
+
+    l.pushString("open_mode");
+    l.pushString(@tagName(flags.mode));
+    l.setTable(-3);
+
+    l.pushString("lock");
+    l.pushString(@tagName(flags.lock));
+    l.setTable(-3);
+
+    l.pushString("exclusive");
+    l.pushBoolean(flags.exclusive);
     l.setTable(-3);
 
     l.pushString("truncate_if_exists");
@@ -224,12 +265,21 @@ pub fn pushPermissions(l: *luau.Luau, permissions: Platform.Permissions) void {
     l.setTable(-3);
 }
 
+fn lCreateFile(l: *luau.Luau) !i32 {
+    const context = Context.getContext(l) orelse return 0;
+    const path = l.toString(1) catch l.argError(1, "expected path as string");
+    const flags = parseCreateFlags(l, 2) catch l.argError(2, "expected file create flags");
+    const file = try context.platform.createFile(path, flags);
+    LFile.push(l, context.platform, file);
+    return 1;
+}
+
 // 1: string path
 // 2: FileFlags flags
 fn lOpenFile(l: *luau.Luau) !i32 {
     const context = Context.getContext(l) orelse return 0;
     const path = l.toString(1) catch l.argError(1, "expected path as string");
-    const flags = parseFileFlags(l, 2) catch l.argError(2, "expected file flags");
+    const flags = parseOpenFlags(l, 2) catch l.argError(2, "expected file open flags");
     const file = try context.platform.openFile(path, flags);
     LFile.push(l, context.platform, file);
     return 1;
