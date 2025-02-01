@@ -1,4 +1,4 @@
-local sys = require("@cart/sys")
+local process = require("@cart/process")
 
 local function fib(n: number): number
 	local a = 0
@@ -11,6 +11,6 @@ local function fib(n: number): number
 	return a
 end
 
-local args = sys.argv()
+local args = process.argv()
 local it = tonumber(args[3]) or 10
 print(`fib({it}) = {fib(it)}`)
