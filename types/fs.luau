@@ -1,7 +1,20 @@
 --!strict
 local io = require("io")
+local result = require("result")
 
 local fs = {}
+
+export type ErrorKind =
+	"FileNotFound"
+	| "PathAlreadyExists"
+	| "AccessDenied"
+	| "SharingViolation"
+	| "OutOfMemory"
+	| "Unknown"
+fs.error = (nil :: any) :: result.Error<{
+	kind: ErrorKind,
+	path: string,
+}>
 
 export type Permissions = {
 	read: boolean,

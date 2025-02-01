@@ -22,20 +22,20 @@ pub fn open(l: *luau.Luau) void {
     l.setTable(-3);
 
     l.pushString("open");
-    l.pushFunction(lOpen, "@cart/ffi.open");
+    util.pushFunction(l, lOpen, "@cart/ffi.open");
     l.setTable(-3);
 
     if (dynlib_supported) {
         l.pushString("structure");
-        l.pushFunction(lStructure, "@cart/ffi.structure");
+        util.pushFunction(l, lStructure, "@cart/ffi.structure");
         l.setTable(-3);
 
         l.pushString("sizeof");
-        l.pushFunction(lSizeof, "@cart/ffi.sizeof");
+        util.pushFunction(l, lSizeof, "@cart/ffi.sizeof");
         l.setTable(-3);
 
         l.pushString("slice");
-        l.pushFunction(lSlice, "@cart/ffi.slice");
+        util.pushFunction(l, lSlice, "@cart/ffi.slice");
         l.setTable(-3);
     }
 
@@ -179,10 +179,10 @@ const LBufferSlice = struct {
         l.setField(-2, "__type");
         l.pushString("This metatable is locked");
         l.setField(-2, "__metatable");
-        l.pushFunction(lToString, "__tostring");
+        util.pushFunction(l, lToString, "__tostring");
         l.setField(-2, "__tostring");
 
-        l.pushFunction(lRelease, "release");
+        util.pushFunction(l, lRelease, "release");
         l.setField(-2, "release");
     }
 
@@ -246,12 +246,12 @@ const LStructure = struct {
         l.setField(-2, "__type");
         l.pushString("This metatable is locked");
         l.setField(-2, "__metatable");
-        l.pushFunction(lToString, "__tostring");
+        util.pushFunction(l, lToString, "__tostring");
         l.setField(-2, "__tostring");
         l.pushValue(-1);
         l.setField(-2, "__index");
 
-        l.pushFunction(lWrite, "write");
+        util.pushFunction(l, lWrite, "write");
         l.setField(-2, "write");
     }
 
@@ -483,9 +483,9 @@ const LSymbol = struct {
         l.setField(-2, "__type");
         l.pushString("This metatable is locked");
         l.setField(-2, "__metatable");
-        l.pushFunction(lToString, "__tostring");
+        util.pushFunction(l, lToString, "__tostring");
         l.setField(-2, "__tostring");
-        l.pushFunction(lCall, "__call");
+        util.pushFunction(l, lCall, "__call");
         l.setField(-2, "__call");
         l.pushValue(-1);
         l.setField(-2, "__index");
@@ -521,7 +521,7 @@ const LSymbol = struct {
         }
 
         var result: ffi.uarg = undefined;
-        self.func.call(@as(*const fn () void, @ptrCast(self.symbol)), &args, &result);
+        self.func.call(@as(*const fn () void, @alignCast(@ptrCast(self.symbol))), &args, &result);
 
         return self.return_type_enum.pushLuauType(l, result);
     }
@@ -561,19 +561,19 @@ const LDynLib = struct {
         l.setField(-2, "__type");
         l.pushString("This metatable is locked");
         l.setField(-2, "__metatable");
-        l.pushFunction(lToString, "__tostring");
+        util.pushFunction(l, lToString, "__tostring");
         l.setField(-2, "__tostring");
         l.pushValue(-1);
         l.setField(-2, "__index");
 
         if (dynlib_supported) {
-            l.pushFunction(lClose, "close");
+            util.pushFunction(l, lClose, "close");
             l.setField(-2, "close");
 
-            l.pushFunction(lGet, "get");
+            util.pushFunction(l, lGet, "get");
             l.setField(-2, "get");
 
-            l.pushFunction(lOpenLib, "open_lib");
+            util.pushFunction(l, lOpenLib, "open_lib");
             l.setField(-2, "open_lib");
         }
     }
@@ -772,19 +772,13 @@ const Context = @import("../Context.zig");
 const Platform = @import("../Platform.zig");
 const Scheduler = @import("../Scheduler.zig");
 
-const dynlib_supported = switch (@import("builtin").os.tag) {
-    .windows, .macos, .linux, .ios => true,
-    else => false,
-};
+const dynlib_supported = config.has_ffi;
 
 const ffi = switch (dynlib_supported) {
     true => @import("ffi"),
     false => void,
 };
 // wont be accessed when ffi is void
-const abi: ffi.Abi = switch (@import("builtin").os.tag) {
-    .windows => .win64,
-    else => .sysv64,
-};
+const abi: ffi.Abi = .default;
 const util = @import("../util.zig");
 const config = @import("config");

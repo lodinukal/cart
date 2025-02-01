@@ -16,27 +16,27 @@ pub const LChild = struct {
         l.setField(-2, "__type");
         l.pushString("This metatable is locked");
         l.setField(-2, "__metatable");
-        l.pushFunction(lToString, "__tostring");
+        util.pushFunction(l, lToString, "__tostring");
         l.setField(-2, "__tostring");
         l.pushValue(-1);
         l.setField(-2, "__index");
 
-        l.pushFunction(lWait, "wait");
+        util.pushFunction(l, lWait, "wait");
         l.setField(-2, "wait");
 
-        l.pushFunction(lKill, "kill");
+        util.pushFunction(l, lKill, "kill");
         l.setField(-2, "kill");
 
-        l.pushFunction(lTerm, "term");
+        util.pushFunction(l, lTerm, "term");
         l.setField(-2, "term");
 
-        l.pushFunction(lStdin, "stdin");
+        util.pushFunction(l, lStdin, "stdin");
         l.setField(-2, "stdin");
 
-        l.pushFunction(lStdout, "stdout");
+        util.pushFunction(l, lStdout, "stdout");
         l.setField(-2, "stdout");
 
-        l.pushFunction(lStderr, "stderr");
+        util.pushFunction(l, lStderr, "stderr");
         l.setField(-2, "stderr");
     }
 
@@ -217,19 +217,19 @@ pub fn open(l: *luau.Luau) void {
     l.newTable();
 
     l.pushString("argv");
-    l.pushFunction(lArgv, "@cart/process.argv");
+    util.pushFunction(l, lArgv, "@cart/process.argv");
     l.setTable(-3);
 
     l.pushString("getenv");
-    l.pushFunction(lGetenv, "@cart/process.getenv");
+    util.pushFunction(l, lGetenv, "@cart/process.getenv");
     l.setTable(-3);
 
     l.pushString("exit");
-    l.pushFunction(lExit, "@cart/process.exit");
+    util.pushFunction(l, lExit, "@cart/process.exit");
     l.setTable(-3);
 
     l.pushString("spawn");
-    l.pushFunction(lSpawn, "@cart/process.spawn");
+    util.pushFunction(l, lSpawn, "@cart/process.spawn");
     l.setTable(-3);
 
     l.setReadOnly(-1, true);

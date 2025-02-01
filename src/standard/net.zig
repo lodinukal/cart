@@ -49,7 +49,7 @@ pub fn open(l: *luau.Luau) void {
     l.newTable();
 
     l.pushString("fetch");
-    l.pushFunction(lFetch, "@cart/net.fetch");
+    util.pushFunction(l, lFetch, "@cart/net.fetch");
     l.setTable(-3);
 
     l.setReadOnly(-1, true);

@@ -93,6 +93,7 @@ pub const Module = struct {
 };
 
 pub const modules = struct {
+    pub const result = @import("standard/result.zig");
     pub const ffi = @import("standard/ffi.zig");
     pub const io = @import("standard/io.zig");
     pub const fs = @import("standard/fs.zig");
@@ -105,6 +106,7 @@ pub const modules = struct {
 };
 
 pub const CART_MODULES: []const Module = &[_]Module{
+    .{ .name = "result", .open = modules.result.open },
     .{ .name = "ffi", .open = modules.ffi.open },
     .{ .name = "io", .open = modules.io.open },
     .{ .name = "fs", .open = modules.fs.open },

@@ -143,13 +143,13 @@ pub fn fileSetPermissions(_: ?*anyopaque, file: File, class: Platform.Class, per
             // noop
         },
         else => {
-            var native_permissions: std.fs.File.Permissions = .{};
+            var native_permissions: std.fs.File.Permissions = undefined;
             native_permissions.inner.unixSet(class, .{
                 .read = permissions.read,
                 .write = permissions.write,
                 .execute = permissions.execute,
             });
-            native_file.setPermissions(native_permissions);
+            native_file.setPermissions(native_permissions) catch return error.Unknown;
         },
     }
 }
@@ -184,7 +184,7 @@ pub fn platformFileToNativeFile(file: File) std.fs.File {
 
 pub fn nativeFileToPlatformFile(file: std.fs.File) File {
     const handle = file.handle;
-    const handle_ptr: *const File = @ptrCast(&handle);
+    const handle_ptr: *const File = @alignCast(@ptrCast(&handle));
     return handle_ptr.*;
 }
 

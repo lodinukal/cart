@@ -32,29 +32,66 @@ jobs:
     strategy:
       matrix:
         include:
+          - name: shared linux x86_64
+            target: x86_64-linux-gnu
+            artifact: cart-${{ needs.prep.outputs.version }}-shared-linux-x86_64
+            shared: true
           - name: linux x86_64
             target: x86_64-linux-gnu
             artifact: cart-${{ needs.prep.outputs.version }}-linux-x86_64
+            shared: false
+          - name: shared linux arm64
+            target: aarch64-linux-gnu
+            artifact: cart-${{ needs.prep.outputs.version }}-shared-linux-aarch64
+            shared: true
           - name: linux arm64
             target: aarch64-linux-gnu
             artifact: cart-${{ needs.prep.outputs.version }}-linux-aarch64
+            shared: false
           - name: linux RISCV64
             target: riscv64-linux
             artifact: cart-${{ needs.prep.outputs.version }}-linux-riscv64
+          - name: shared windows x86_64
+            target: x86_64-windows
+            artifact: cart-${{ needs.prep.outputs.version }}-shared-windows-x86_64
+            ext: .exe
+            shared: true
           - name: windows x86_64
             target: x86_64-windows
             artifact: cart-${{ needs.prep.outputs.version }}-windows-x86_64
             ext: .exe
+            shared: false
+          - name: shared windows arm64
+            target: aarch64-windows
+            artifact: cart-${{ needs.prep.outputs.version }}-shared-windows-aarch64
+            ext: .exe
+            shared: true
           - name: windows arm64
             target: aarch64-windows
             artifact: cart-${{ needs.prep.outputs.version }}-windows-aarch64
             ext: .exe
+            shared: false
+          - name: shared macos x86_64
+            target: x86_64-macos
+            artifact: cart-${{ needs.prep.outputs.version }}-macos-x86_64
+            shared: true
           - name: macos x86_64
             target: x86_64-macos
             artifact: cart-${{ needs.prep.outputs.version }}-macos-x86_64
+            shared: false
+          - name: shared macos arm64
+            target: aarch64-macos
+            artifact: cart-${{ needs.prep.outputs.version }}-shared-macos-aarch64
+            shared: true
           - name: macos arm64
             target: aarch64-macos
             artifact: cart-${{ needs.prep.outputs.version }}-macos-aarch64
+            shared: false
+          - name: wasm
+            target: wasm32-wasi
+            artifact: cart-${{ needs.prep.outputs.version }}-wasm
+            ext: .wasm
+            shared: false
 
     name: ${{ matrix.name }}
     timeout-minutes: 20
@@ -69,7 +106,7 @@ jobs:
           version: 0.14.0-dev.2571+01081cc8e
 
       - name: Build
-        run: zig build -Dshared=false -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
+        run: zig build -Dshared=${{ matrix.shared }} -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
 
       - name: Pack Artifact
         run: cd ./zig-out/bin && zip ../../${{ matrix.artifact }}.zip ./cart${{ matrix.ext }}

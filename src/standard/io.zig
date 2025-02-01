@@ -11,7 +11,7 @@ const Erased = struct {
     pub fn init(allocator: std.mem.Allocator, comptime T: type) !Erased {
         const len = @sizeOf(T);
         const context = try allocator.create(T);
-        const self: Erased = .{ .allocator = allocator, .context = @ptrCast(context), .len = len };
+        const self: Erased = .{ .allocator = allocator, .context = @alignCast(@ptrCast(context)), .len = len };
         @memset(self.context[0..len], 0);
         return self;
     }
@@ -36,15 +36,15 @@ pub const LReader = struct {
         l.setField(-2, "__type");
         l.pushString("This metatable is locked");
         l.setField(-2, "__metatable");
-        l.pushFunction(lToString, "__tostring");
+        util.pushFunction(l, lToString, "__tostring");
         l.setField(-2, "__tostring");
         l.pushValue(-1);
         l.setField(-2, "__index");
 
-        l.pushFunction(lRead, "read");
+        util.pushFunction(l, lRead, "read");
         l.setField(-2, "read");
 
-        l.pushFunction(lSkip, "skip");
+        util.pushFunction(l, lSkip, "skip");
         l.setField(-2, "skip");
     }
 
@@ -108,12 +108,12 @@ pub const LWriter = struct {
         l.setField(-2, "__type");
         l.pushString("This metatable is locked");
         l.setField(-2, "__metatable");
-        l.pushFunction(lToString, "__tostring");
+        util.pushFunction(l, lToString, "__tostring");
         l.setField(-2, "__tostring");
         l.pushValue(-1);
         l.setField(-2, "__index");
 
-        l.pushFunction(lWrite, "write");
+        util.pushFunction(l, lWrite, "write");
         l.setField(-2, "write");
     }
 
@@ -169,15 +169,15 @@ pub fn open(l: *luau.Luau) void {
     l.newTable();
 
     l.pushString("reader_from_buffer");
-    l.pushFunction(lReaderFromBuffer, "cart_reader_from_buffer");
+    util.pushFunction(l, lReaderFromBuffer, "cart_reader_from_buffer");
     l.setTable(-3);
 
     l.pushString("writer_from_buffer");
-    l.pushFunction(lWriterFromBuffer, "cart_writer_from_buffer");
+    util.pushFunction(l, lWriterFromBuffer, "cart_writer_from_buffer");
     l.setTable(-3);
 
     l.pushString("pipe");
-    l.pushFunction(lPipe, "cart_pipe");
+    util.pushFunction(l, lPipe, "cart_pipe");
     l.setTable(-3);
 
     l.setReadOnly(-1, true);

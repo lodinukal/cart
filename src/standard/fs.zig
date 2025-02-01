@@ -1,4 +1,5 @@
 const FILE_METATABLE = "@cart/fs.File";
+const FS_ERROR = "@cart/fs";
 
 pub const LFile = struct {
     platform: Platform,
@@ -10,33 +11,33 @@ pub const LFile = struct {
         l.setField(-2, "__type");
         l.pushString("This metatable is locked");
         l.setField(-2, "__metatable");
-        l.pushFunction(lToString, "__tostring");
+        util.pushFunction(l, lToString, "__tostring");
         l.setField(-2, "__tostring");
         l.pushValue(-1);
         l.setField(-2, "__index");
 
-        l.pushFunction(lClose, "close");
+        util.pushFunction(l, lClose, "close");
         l.setField(-2, "close");
-        l.pushFunction(lReader, "reader");
+        util.pushFunction(l, lReader, "reader");
         l.setField(-2, "reader");
-        l.pushFunction(lWriter, "writer");
+        util.pushFunction(l, lWriter, "writer");
         l.setField(-2, "writer");
-        l.pushFunction(lGetReadonly, "get_readonly");
+        util.pushFunction(l, lGetReadonly, "get_readonly");
         l.setField(-2, "get_readonly");
-        l.pushFunction(lSetReadonly, "set_readonly");
+        util.pushFunction(l, lSetReadonly, "set_readonly");
         l.setField(-2, "set_readonly");
-        l.pushFunction(lGetPermissions, "get_permissions");
+        util.pushFunction(l, lGetPermissions, "get_permissions");
         l.setField(-2, "get_permissions");
-        l.pushFunction(lSetPermissions, "set_permissions");
+        util.pushFunction(l, lSetPermissions, "set_permissions");
         l.setField(-2, "set_permissions");
     }
 
-    fn lToString(l: *luau.Luau) !i32 {
+    fn lToString(l: *luau.Luau) FsError!i32 {
         l.pushString("cart.File");
         return 1;
     }
 
-    fn lClose(l: *luau.Luau) !i32 {
+    fn lClose(l: *luau.Luau) FsError!i32 {
         const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         if (self.file) |f| {
             self.platform.closeFile(f);
@@ -47,14 +48,14 @@ pub const LFile = struct {
         return 0;
     }
 
-    fn lGetReadonly(l: *luau.Luau) !i32 {
+    fn lGetReadonly(l: *luau.Luau) FsError!i32 {
         const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         l.pushBoolean(file.getReadonly(self.platform));
         return 1;
     }
 
-    fn lSetReadonly(l: *luau.Luau) !i32 {
+    fn lSetReadonly(l: *luau.Luau) FsError!i32 {
         const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const readonly = l.optBoolean(2) orelse l.argError(2, "expected boolean");
@@ -62,25 +63,25 @@ pub const LFile = struct {
         return 0;
     }
 
-    fn lGetPermissions(l: *luau.Luau) !i32 {
+    fn lGetPermissions(l: *luau.Luau) FsError!i32 {
         const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
-        const class = try util.parseStringAsEnum(Platform.Class, l, 2, null);
+        const class = util.parseStringAsEnum(Platform.Class, l, 2, null) catch l.argError(2, "expected class");
         const permissions = file.getPermissions(class, self.platform);
         pushPermissions(l, permissions);
         return 1;
     }
 
-    fn lSetPermissions(l: *luau.Luau) !i32 {
+    fn lSetPermissions(l: *luau.Luau) FsError!i32 {
         const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
-        const class = try util.parseStringAsEnum(Platform.Class, l, 2, null);
+        const class = util.parseStringAsEnum(Platform.Class, l, 2, null) catch l.argError(2, "expected class");
         const permissions = parsePermissions(l, 3) orelse (l.argError(3, "expected permissions") catch unreachable);
         try file.setPermissions(self.platform, class, permissions);
         return 0;
     }
 
-    fn lReader(l: *luau.Luau) !i32 {
+    fn lReader(l: *luau.Luau) FsError!i32 {
         const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const reader = try file.reader(self.platform);
@@ -89,7 +90,7 @@ pub const LFile = struct {
         return 1;
     }
 
-    fn lWriter(l: *luau.Luau) !i32 {
+    fn lWriter(l: *luau.Luau) FsError!i32 {
         const self = l.checkUserdata(LFile, 1, FILE_METATABLE);
         const file = self.file orelse (l.raiseErrorFmt("file already closed", .{}) catch unreachable);
         const writer = try file.writer(self.platform);
@@ -119,16 +120,19 @@ pub fn open(l: *luau.Luau) void {
     l.newTable();
 
     l.pushString("create_file");
-    l.pushFunction(lCreateFile, "@cart/fs.create_file");
+    util.pushFunction(l, lCreateFile, "@cart/fs.create_file");
     l.setTable(-3);
 
     l.pushString("open_file");
-    l.pushFunction(lOpenFile, "@cart/fs.open_file");
+    util.pushFunction(l, lOpenFile, "@cart/fs.open_file");
     l.setTable(-3);
 
     l.pushString("exists");
-    l.pushFunction(lExists, "@cart/fs.exists");
+    util.pushFunction(l, lExists, "@cart/fs.exists");
     l.setTable(-3);
+
+    _ = result.LError.push(l, FS_ERROR);
+    l.setField(-2, "error");
 
     l.setReadOnly(-1, true);
 }
@@ -265,28 +269,46 @@ pub fn pushPermissions(l: *luau.Luau, permissions: Platform.Permissions) void {
     l.setTable(-3);
 }
 
-fn lCreateFile(l: *luau.Luau) !i32 {
+pub const FsError = error{
+    FileNotFound,
+    PathAlreadyExists,
+    AccessDenied,
+    SharingViolation,
+    OutOfMemory,
+    Unknown,
+};
+
+pub fn raiseFsError(l: *luau.Luau, err: FsError, path: [:0]const u8) noreturn {
+    l.newTable();
+    l.pushString(path);
+    l.setField(-2, "path");
+    l.pushString(@errorName(err));
+    l.setField(-2, "kind");
+    result.LErrorInstance.raise(l, FS_ERROR, -1) catch l.raiseError();
+}
+
+fn lCreateFile(l: *luau.Luau) i32 {
     const context = Context.getContext(l) orelse return 0;
     const path = l.toString(1) catch l.argError(1, "expected path as string");
     const flags = parseCreateFlags(l, 2) catch l.argError(2, "expected file create flags");
-    const file = try context.platform.createFile(path, flags);
+    const file = context.platform.createFile(path, flags) catch |err| raiseFsError(l, err, path);
     LFile.push(l, context.platform, file);
     return 1;
 }
 
 // 1: string path
 // 2: FileFlags flags
-fn lOpenFile(l: *luau.Luau) !i32 {
+fn lOpenFile(l: *luau.Luau) i32 {
     const context = Context.getContext(l) orelse return 0;
     const path = l.toString(1) catch l.argError(1, "expected path as string");
     const flags = parseOpenFlags(l, 2) catch l.argError(2, "expected file open flags");
-    const file = try context.platform.openFile(path, flags);
+    const file = context.platform.openFile(path, flags) catch |err| raiseFsError(l, err, path);
     LFile.push(l, context.platform, file);
     return 1;
 }
 
 // 1: string path
-fn lExists(l: *luau.Luau) !i32 {
+fn lExists(l: *luau.Luau) i32 {
     const context = Context.getContext(l) orelse return 0;
     const path = l.toString(1) catch l.argError(1, "expected path as string");
     l.pushBoolean(context.platform.fileExists(path));
@@ -302,3 +324,4 @@ const Context = @import("../Context.zig");
 const Platform = @import("../Platform.zig");
 
 const io = @import("io.zig");
+const result = @import("result.zig");
