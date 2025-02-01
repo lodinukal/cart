@@ -1,11 +1,14 @@
+--!strict
 local pretty = {}
 
+export type Context = "lvalue" | "rvalue"
 export type Formatter = (value: any, options: PrintOptions) -> string?
 export type PrintOptions = {
 	current_depth: number?,
 	indent: string?,
 	visited_tables: { [any]: true },
 	formatters: { Formatter },
+	context: Context?,
 }
 
 function pretty.print(value: any, options: PrintOptions): string
@@ -36,9 +39,19 @@ function pretty.print(value: any, options: PrintOptions): string
 				visited_tables = visited_tables,
 				formatters = formatters,
 			}
+			kv_options.context = "lvalue"
 			local key = pretty.print(k, kv_options)
+			kv_options.context = "rvalue"
 			local val = pretty.print(v, kv_options)
-			str = str .. indent:rep(current_depth) .. "[" .. key .. "] = " .. val .. ",\n"
+
+			local key_doesnt_need_brackets = typeof(k) == "string" and k:match("^[%a_][%a%d_]*$") ~= nil
+			str = str .. indent:rep(current_depth)
+			if key_doesnt_need_brackets then
+				str = str .. k
+			else
+				str = str .. "[" .. key .. "]"
+			end
+			str = str .. " = " .. val .. ",\n"
 		end
 		str = str .. indent:rep(current_depth - 1) .. "}"
 		return str
