@@ -212,7 +212,9 @@ pub fn pushTerm(l: *luau.Luau, term: std.process.Child.Term) void {
 }
 
 pub fn open(l: *luau.Luau) void {
-    LChild.open(l);
+    if (std.process.can_spawn) {
+        LChild.open(l);
+    }
 
     l.newTable();
 
@@ -277,6 +279,9 @@ fn lExit(l: *luau.Luau) !i32 {
 // 1: string, executable name
 // 2: array of arguments
 fn lSpawn(l: *luau.Luau) !i32 {
+    if (!std.process.can_spawn) {
+        try l.raiseErrorFmt("process spawning is not supported on this platform", .{});
+    }
     const context = Context.getContext(l) orelse return 0;
     const name = l.checkString(1);
 

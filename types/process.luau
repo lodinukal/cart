@@ -1,6 +1,12 @@
 --!strict
 local process = {}
 local io = require("io")
+local result = require("result")
+
+export type ErrorKind = | "Unknown"
+process.error = (nil :: any) :: result.Error<{
+	kind: ErrorKind,
+}>
 
 export type IoBehavior = "inherit" | "ignore" | "pipe"
 
