@@ -54,7 +54,7 @@ pub const LReader = struct {
     }
 
     pub fn push(l: *luau.Luau, comptime R: type) !*LReader {
-        var self = l.newUserdataDtor(LReader, dtor);
+        var self = l.newUserdataDtor(LReader, deinit);
         _ = l.getMetatableRegistry(READER_METATABLE);
         l.setMetatable(-2);
         self.erased = try .init(l.allocator(), R);
@@ -73,7 +73,7 @@ pub const LReader = struct {
         return self;
     }
 
-    fn dtor(self: *LReader) void {
+    pub fn deinit(self: *LReader) void {
         self.erased.deinit();
     }
 
@@ -123,7 +123,7 @@ pub const LWriter = struct {
     }
 
     pub fn push(l: *luau.Luau, comptime W: type) !*LWriter {
-        var self = l.newUserdataDtor(LWriter, dtor);
+        var self = l.newUserdataDtor(LWriter, deinit);
         _ = l.getMetatableRegistry(WRITER_METATABLE);
         l.setMetatable(-2);
         self.erased = try .init(l.allocator(), W);
@@ -142,7 +142,7 @@ pub const LWriter = struct {
         return self;
     }
 
-    fn dtor(self: *LWriter) void {
+    pub fn deinit(self: *LWriter) void {
         self.erased.deinit();
     }
 

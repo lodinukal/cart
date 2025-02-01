@@ -1,5 +1,6 @@
 --!strict
 local process = {}
+local io = require("io")
 
 export type IoBehavior = "inherit" | "ignore" | "pipe"
 
@@ -20,6 +21,13 @@ export type Child = {
 	wait: (self: Child) -> Term,
 	kill: (self: Child) -> (),
 	term: (self: Child) -> Term?,
+
+	--- Must be called and used prior to waiting and killing
+	stdin: (self: Child) -> io.Writer?,
+	--- Must be called and used prior to waiting and killing
+	stdout: (self: Child) -> io.Reader?,
+	--- Must be called and used prior to waiting and killing
+	stderr: (self: Child) -> io.Reader?,
 }
 
 function process.argv(): { string }
@@ -35,7 +43,7 @@ function process.exit(code: number?)
 	local _ = code
 end
 
-function process.spawn(name: string, args: { string }?, options: SpawnOptions?): Child
+function process.spawn(name: string, args: { string }, options: SpawnOptions): Child
 	local _ = name
 	local _ = args
 	local _ = options

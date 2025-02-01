@@ -133,8 +133,8 @@ pub fn loadLibrary(self: *Self, comptime alias: []const u8, comptime m: []const 
 
 /// gets the context from the current thread, used for lua functions
 pub fn getContext(l: *luau.Luau) ?*Self {
+    defer l.pop(1);
     if (l.getGlobal(CART_GLOBAL_NAME) != .light_userdata) {
-        l.pop(1);
         return null;
     }
     return l.checkUserdata(Self, -1, CART_GLOBAL_NAME);
