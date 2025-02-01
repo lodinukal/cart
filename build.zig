@@ -20,7 +20,17 @@ pub fn build(b: *std.Build) void {
 
     const target = if (in_target.result.isWasm()) wasm_target else in_target;
 
+    const shared_luau = b.option(
+        bool,
+        "shared",
+        "Build a shared library luau instead of a static library. This allows for dynamic luau libraries to be opened.",
+    ) orelse !target.result.isWasm();
+    if (target.result.isWasm() and shared_luau) {
+        std.debug.panic("Cannot build shared library for wasm target; pass -Dshared=false or change target.", .{});
+    }
+
     const config = b.addOptions();
+    config.addOption(bool, "shared_luau", shared_luau);
 
     const lib_mod = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
@@ -33,6 +43,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = std.builtin.OptimizeMode.ReleaseFast,
         .use_4_vector = true,
+        .shared = shared_luau,
     });
     lib_mod.addImport("luau", luau_dep.module("luau"));
 
@@ -86,9 +97,10 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(shared_test);
     }
 
-    // This declares intent for the library to be installed into the standard
-    // location when the user invokes the "install" step (the default step when
-    // running `zig build`).
+    // if we are linking shared library then we need to install the shared library
+    if (shared_luau) {
+        b.installArtifact(luau_dep.artifact("luau"));
+    }
     b.installArtifact(lib);
 
     // This creates another `std.Build.Step.Compile`, but this one builds an executable

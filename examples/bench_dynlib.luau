@@ -3,7 +3,7 @@ local ffi = require("@cart/ffi")
 local lib = ffi.open("zig-out/bin/shared_test.dll")
 assert(lib, "Failed to open shared library")
 
-local lua_lib: { add: (number, number) -> number }? = lib:load("open")
+local lua_lib: { add: (number, number) -> number }? = lib:open_lib("open")
 assert(lua_lib, "Failed to find add")
 
 local start = os.clock()
@@ -14,5 +14,5 @@ local frame_budget = 60 / elapsed
 elapsed = elapsed
 
 print("Result:", result)
-print("Elapsed:", elapsed)
+print("Elapsed (ns):", elapsed * 1e9)
 print("Frame budget:", frame_budget)

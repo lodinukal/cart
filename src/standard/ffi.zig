@@ -573,8 +573,8 @@ const LDynLib = struct {
             l.pushFunction(lGet, "get");
             l.setField(-2, "get");
 
-            l.pushFunction(lLoad, "load");
-            l.setField(-2, "load");
+            l.pushFunction(lOpenLib, "open_lib");
+            l.setField(-2, "open_lib");
         }
     }
 
@@ -606,7 +606,10 @@ const LDynLib = struct {
         return 0;
     }
 
-    pub fn lLoad(l: *luau.Luau) !i32 {
+    pub fn lOpenLib(l: *luau.Luau) !i32 {
+        if (!config.shared_luau) {
+            l.raiseErrorFmt("luau must be shared to load dynamic luau libraries", .{}) catch unreachable;
+        }
         const self = l.checkUserdata(LDynLib, 1, DYNLIB_METATABLE);
         const symbol = l.toString(2) catch l.argError(2, "expected name of symbol");
 
@@ -784,3 +787,4 @@ const abi: ffi.Abi = switch (@import("builtin").os.tag) {
     else => .sysv64,
 };
 const util = @import("../util.zig");
+const config = @import("config");

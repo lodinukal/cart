@@ -51,9 +51,10 @@ export type Dynlib = {
 	--- @param ...CType the arguments of the function
 	get: <T>(self: Dynlib, name: string, ret: CType, ...CType) -> T?,
 	--- Loads a function with a signature like: (l: *LuauState) -> i32, where an error is < 0 and passes the current state.
+	--- Like opening a library in normal lua. Only available when luau has been linked dynamically.
 	--- This can return anything as given by the resulting function.
-	--- @param name string the name of the function
-	load: <T>(self: Dynlib, name: string) -> T,
+	--- @param name the name of the function
+	open_lib: <T>(self: Dynlib, name: string) -> T,
 	--- Closes a dynamic library.
 	close: (self: Dynlib) -> (),
 }
