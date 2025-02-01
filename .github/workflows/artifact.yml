@@ -36,7 +36,7 @@ jobs:
             target: x86_64-linux-gnu
             artifact: cart-${{ needs.prep.outputs.version }}-shared-linux-x86_64
             shared: true
-            extra-files: ./luau.so
+            extra-files: ../lib/libluau.*
           - name: linux x86_64
             target: x86_64-linux-gnu
             artifact: cart-${{ needs.prep.outputs.version }}-linux-x86_64
@@ -80,7 +80,7 @@ jobs:
             target: aarch64-macos
             artifact: cart-${{ needs.prep.outputs.version }}-shared-macos-aarch64
             shared: true
-            extra-files: ./luau.dylib
+            extra-files: ../lib/libluau.*
           - name: macos arm64
             target: aarch64-macos
             artifact: cart-${{ needs.prep.outputs.version }}-macos-aarch64

@@ -209,6 +209,13 @@ const Version = struct {
             .makeFn = Version.make,
         });
         self.version = semantic_version;
+        if (self.version.pre) |pre| {
+            if (std.mem.eql(u8, pre, "dev")) {
+                const hash = b.run(&.{ "git", "rev-parse", "--short", "HEAD" });
+                const trimmed = std.mem.trim(u8, hash, "\r\n ");
+                self.version.pre = b.allocator.dupe(u8, trimmed) catch @panic("OOM");
+            }
+        }
         return self;
     }
 
