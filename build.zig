@@ -34,6 +34,13 @@ pub fn build(b: *std.Build) !void {
     const version = try Version.init(b);
     config.addOption(std.SemanticVersion, "version", version.version);
 
+    const has_ffi = blk: {
+        if (target.result.isWasm()) break :blk false;
+        if (target.result.os.tag == .windows and target.result.cpu.arch == .aarch64) break :blk false;
+        break :blk true;
+    };
+    config.addOption(bool, "has_ffi", has_ffi);
+
     const lib_mod = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -49,7 +56,7 @@ pub fn build(b: *std.Build) !void {
     });
     lib_mod.addImport("luau", luau_dep.module("luau"));
 
-    if (!target.result.isWasm()) {
+    if (has_ffi) {
         // dynlib
         const ffi_dep = b.dependency("ffi", .{
             .target = target,
