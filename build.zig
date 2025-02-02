@@ -79,6 +79,7 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = if (target.result.isWasm()) b.path("src/wasm.zig") else b.path("src/cli.zig"),
         .target = target,
         .optimize = optimize,
+        .strip = true,
     });
 
     // Modules can depend on one another using the `std.Build.Module.addImport` function.
@@ -93,9 +94,10 @@ pub fn build(b: *std.Build) !void {
     const lib = b.addStaticLibrary(.{
         .name = "cart",
         .root_module = lib_mod,
+        .optimize = optimize,
     });
 
-    if (!target.result.isWasm()) {
+    if (!target.result.isWasm() and optimize == .Debug) {
         const shared_test = b.addSharedLibrary(.{
             .name = "shared_test",
             .root_source_file = b.path("src/shared_test.zig"),
@@ -117,6 +119,7 @@ pub fn build(b: *std.Build) !void {
     const cli = b.addExecutable(.{
         .name = "cart",
         .root_module = cli_mod,
+        .optimize = optimize,
     });
     if (target.result.isWasm()) {
         lib_mod.export_symbol_names = &.{
