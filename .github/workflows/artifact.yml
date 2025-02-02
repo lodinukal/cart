@@ -151,7 +151,7 @@ jobs:
         with:
           # draft: true
           files: ./artifacts/*.zip ./artifacts/cart.wasm
-          prerelease: ! ${{ needs.prep.outputs.prerelease }}
+          prerelease: ${{ needs.prep.outputs.prerelease }}
           name: ${{ needs.prep.outputs.version }}
           tag_name: v${{ needs.prep.outputs.version }}
           fail_on_unmatched_files: true
