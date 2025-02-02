@@ -150,7 +150,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # draft: true
-          files: ./artifacts/*.zip ./artifacts/cart.wasm
+          files: |
+            ./artifacts/cart.wasm
+            ./artifacts/*.zip
           prerelease: ${{ needs.prep.outputs.prerelease }}
           name: ${{ needs.prep.outputs.version }}
           tag_name: v${{ needs.prep.outputs.version }}
