@@ -2,22 +2,25 @@ pub fn main() !void {
     const allocator = std.heap.wasm_allocator;
 
     const plat = lib.Platform.Native.platform();
-    const luaurc_file = try plat.openFile(".luaurc", .{ .mode = .read_only, .create_if_not_exists = false });
-    defer plat.closeFile(luaurc_file);
-
     const http_client = try plat.createClient(allocator);
     lib.Context.modules.net.setClient(http_client);
 
-    const luaurc_contents = (try luaurc_file.reader(plat))
-        .readAllAlloc(allocator, std.math.maxInt(u16)) catch return error.OutOfMemory;
+    const luaurc = if (plat.fileExists(".luaurc")) blk: {
+        const luaurc_file = try plat.openFile(".luaurc", .{ .mode = .read_only, .create_if_not_exists = false });
+        defer plat.closeFile(luaurc_file);
 
-    const luaurc = try lib.luaurc.Config.parse(allocator, allocator, luaurc_contents);
+        const content = (try luaurc_file.reader(plat))
+            .readAllAlloc(allocator, std.math.maxInt(u16)) catch return error.OutOfMemory;
+        defer allocator.free(content);
+        break :blk try lib.luaurc.Config.parse(allocator, allocator, content);
+    } else try lib.luaurc.Config.parse(allocator, allocator,
+        \\ { "languageMode": "strict" }
+    );
 
     cli_state = .{
         .allocator = allocator,
         .platform = plat,
         .http_client = http_client,
-        .luaurc_contents = luaurc_contents,
         .luaurc = luaurc,
         .context = .{
             .rc = luaurc,
@@ -38,12 +41,10 @@ const CliState = struct {
     allocator: std.mem.Allocator,
     platform: lib.Platform,
     http_client: lib.Platform.HttpClient,
-    luaurc_contents: []const u8,
     luaurc: lib.luaurc.Config,
     context: lib.Context,
 
     pub fn deinit(self: *CliState) void {
-        self.allocator.free(self.luaurc_contents);
         self.luaurc.deinit();
         self.context.deinit();
 

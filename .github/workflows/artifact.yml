@@ -13,7 +13,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       should-publish: ${{ steps.semver_parser.outputs.prerelease == '' }}
-      prerelease: ${{ steps.semver_parser.outputs.prerelease == '' }}
+      prerelease: ${{ steps.semver_parser.outputs.prerelease != '' }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

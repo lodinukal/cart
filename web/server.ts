@@ -1,11 +1,9 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 
-import { build } from "bun";
-
 const app = new Hono();
 
-const build_result = await build({
+const build_result = await Bun.build({
   entrypoints: ["./client.tsx"],
   outdir: "./dist",
   publicPath: "/static/",
@@ -54,6 +52,20 @@ app.get("/example/*", async (c) => {
 
 const port = parseInt(process.env.PORT!) || 3000;
 console.log(`Running at http://localhost:${port}`);
+
+const release = "v0.1.0";
+const path = `https://github.com/lodinukal/cart/releases/download/${release}/cart.wasm`;
+
+// download into ./dist/
+
+fetch(path).then(async (res) => {
+  if (res.ok === false) {
+    throw new Error(`Failed to fetch wasm form ${path}: ${res.statusText}`);
+  }
+  const file = Bun.file("./dist/cart.wasm");
+  const writer = file.writer();
+  await writer.write(await res.arrayBuffer());
+});
 
 export default {
   port,

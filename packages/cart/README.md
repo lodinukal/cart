@@ -16,12 +16,6 @@ import { Cart, CartOptions, Memory, stdIo } from "../../packages/cart";
 const shared_mem = new Memory();
 
 const fs = new Map<string, Inode>();
-fs.set(
-  "cart",
-  new File([], {
-    readonly: true,
-  })
-);
 
 const cart = new Cart(
   new CartOptions({

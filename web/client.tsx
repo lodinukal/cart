@@ -15,35 +15,9 @@ const search_params = new Map<string, string>(
 );
 
 let cart: Cart;
-const default_luaurc = `
-{
-  "languageMode": "strict",
-  "lint": {
-    "*": true
-  },
-  "lintErrors": false,
-  "typeErrors": true,
-  "globals": [
-    "warn"
-  ],
-  "aliases": {
-  }
-}`;
 
 async function run() {
   const fs = new Map<string, Inode>();
-  fs.set(
-    "cart",
-    new File([], {
-      readonly: true,
-    })
-  );
-  fs.set(
-    ".luaurc",
-    new File(new TextEncoder().encode(default_luaurc), {
-      readonly: true,
-    })
-  );
 
   const example_with_args_name = search_params.get("example") || "dom.luau";
   const split_example_with_args = example_with_args_name.split("|");
@@ -63,8 +37,7 @@ async function run() {
       fds: stdIo("", fs),
     })
   );
-  const release = "0.1.0";
-  const path = `https://github.com/lodinukal/cart/releases/download/v${release}/cart.wasm`;
+  const path = `/static/cart.wasm`;
   await cart.load(path);
 
   const thread = cart.loadThreadFromString(example_name, contents);
