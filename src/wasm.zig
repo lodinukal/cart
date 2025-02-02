@@ -5,15 +5,7 @@ pub fn main() !void {
     const http_client = try plat.createClient(allocator);
     lib.Context.modules.net.setClient(http_client);
 
-    const luaurc = if (plat.fileExists(".luaurc")) blk: {
-        const luaurc_file = try plat.openFile(".luaurc", .{ .mode = .read_only, .create_if_not_exists = false });
-        defer plat.closeFile(luaurc_file);
-
-        const content = (try luaurc_file.reader(plat))
-            .readAllAlloc(allocator, std.math.maxInt(u16)) catch return error.OutOfMemory;
-        defer allocator.free(content);
-        break :blk try lib.luaurc.Config.parse(allocator, allocator, content);
-    } else try lib.luaurc.Config.parse(allocator, allocator,
+    const luaurc = try lib.luaurc.Config.parse(allocator, allocator,
         \\ { "languageMode": "strict" }
     );
 
