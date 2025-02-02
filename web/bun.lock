@@ -4,7 +4,7 @@
     "": {
       "name": "cart-web-example",
       "dependencies": {
-        "cart-luau": "^0.0.1",
+        "cart-luau": "^0.1.0",
       },
       "devDependencies": {
         "@bjorn3/browser_wasi_shim": "^0.4.0",
@@ -32,7 +32,7 @@
 
     "bun-types": ["bun-types@1.2.1", "", { "dependencies": { "@types/node": "*", "@types/ws": "~8.5.10" } }, "sha512-p7bmXUWmrPWxhcbFVk7oUXM5jAGt94URaoa3qf4mz43MEhNAo/ot1urzBqctgvuq7y9YxkuN51u+/qm4BiIsHw=="],
 
-    "cart-luau": ["cart-luau@0.0.1", "", { "dependencies": { "@bjorn3/browser_wasi_shim": "^0.4.0" }, "peerDependencies": { "typescript": "^5.0.0" } }, "sha512-6+7RzjT75teuaNAIESBx1gDnLntfvZ2XUMHfPTpmlXZsF05QTiLufkLm6nCzO442jbg03xO1iOpSHfUDyRIBdg=="],
+    "cart-luau": ["cart-luau@0.1.0", "", { "dependencies": { "@bjorn3/browser_wasi_shim": "^0.4.0" }, "peerDependencies": { "typescript": "^5.0.0" } }, "sha512-N0yP7IWdvtxjPj2jx+TJIT3LtrPo6kda7P65UdMrMXu/e/JCyzF14qtpk2YXD1O/7Z+FMMgVuQB+fB7kZUwP8w=="],
 
     "chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 

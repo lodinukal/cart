@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      should-publish: ${{ steps.semver_parser.outputs.prerelease == '' }}
+      prerelease: ${{ steps.semver_parser.outputs.prerelease == '' }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -26,6 +28,12 @@ jobs:
         run: |
           version=$(zig build version)
           echo "version=$version">> $GITHUB_OUTPUT
+
+      - name: Parse semver string
+        id: semver_parser
+        uses: booxmedialtd/ws-action-parse-semver@v1
+        with:
+          input_string: ${{ steps.version.outputs.version }}
 
   build:
     needs: prep
@@ -90,6 +98,7 @@ jobs:
             artifact: cart-${{ needs.prep.outputs.version }}-wasm
             ext: .wasm
             shared: false
+            only-binary: true
 
     name: ${{ matrix.name }}
     timeout-minutes: 20
@@ -132,13 +141,17 @@ jobs:
           path: ./artifacts
           merge-multiple: true
 
+      - name: Unzip wasm artifact
+        run: unzip ./artifacts/cart-${{ needs.prep.outputs.version }}-wasm.zip -d ./artifacts
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # draft: true
-          files: ./artifacts/*.zip
+          files: ./artifacts/*.zip ./artifacts/cart.wasm
+          prerelease: ! ${{ needs.prep.outputs.prerelease }}
           name: ${{ needs.prep.outputs.version }}
           tag_name: v${{ needs.prep.outputs.version }}
           fail_on_unmatched_files: true

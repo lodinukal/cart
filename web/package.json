@@ -12,7 +12,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "cart-luau": "^0.0.1"
+    "cart-luau": "^0.1.0"
   },
   "scripts": {
     "lint": "npx prettier . --write",

@@ -22,68 +22,35 @@ fs.set(
     readonly: true,
   })
 );
-fs.set(
-  ".luaurc",
-  new File(
-    new TextEncoder().encode(`
-{
-  "languageMode": "strict",
-  "lint": {
-    "*": true
-  },
-  "lintErrors": false,
-  "typeErrors": true,
-  "globals": [
-    "warn"
-  ],
-  "aliases": {
-  }
-}`),
-    {
-      readonly: true,
-    }
-  )
-);
-
-fs.set(
-  "test.luau",
-  new File(
-    new TextEncoder().encode(
-      `
-local task = require("@cart/task")
-local fs = require("@cart/fs")
-local function fib(n)
-  if n <= 1 then
-    return n
-  end
-  return fib(n - 1) + fib(n - 2)
-end
-
-local result = fib(10)
-
-fs.open_file("output.temp.txt", {
-    create_if_not_exists = true,
-    open_mode = "read_write",
-})
-    :writer()
-    :write(buffer.fromstring(\`result {result}\`))
-`
-    )
-  )
-);
 
 const cart = new Cart(
   new CartOptions({
     memory: shared_mem,
-    args: ["test.luau"],
+    args: [],
     env: [],
     fds: stdIo("", fs),
   })
 );
 
 async function run() {
-  await cart.load();
-  console.log(shared_mem.exports);
+  await cart.load(/*wasm path*/);
+  const thread = cart.loadThreadFromString("fib", `
+local function fib(n)
+  if n == 0 then
+    return 0
+  elseif n == 1 then
+    return 1
+  else
+    return fib(n - 1) + fib(n - 2)
+  end
+end
+
+print(fib(10))
+  `);
+  if (!thread.valid) {
+    throw new Error("Failed to load example");
+  }
+  await thread.execute();
 }
 
 run();

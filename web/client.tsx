@@ -1,6 +1,6 @@
 import type { Inode } from "@bjorn3/browser_wasi_shim";
 import { File } from "@bjorn3/browser_wasi_shim";
-import { Cart, CartOptions, LuauThread, Memory, stdIo } from "../packages/cart";
+import { Cart, CartOptions, Memory, stdIo } from "cart-luau";
 
 const shared_mem = new Memory();
 
@@ -63,7 +63,9 @@ async function run() {
       fds: stdIo("", fs),
     })
   );
-  await cart.load();
+  const release = "0.1.0";
+  const path = `https://github.com/lodinukal/cart/releases/download/v${release}/cart.wasm`;
+  await cart.load(path);
 
   const thread = cart.loadThreadFromString(example_name, contents);
   if (!thread.valid) {
