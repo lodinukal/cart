@@ -292,6 +292,8 @@ export class CartOptions {
   env: string[] = [];
   fds: Fd[] = stdIo("");
 
+  debug: boolean = false;
+
   public constructor(init?: Partial<CartOptions>) {
     Object.assign(this, init);
   }
@@ -468,7 +470,9 @@ export class Cart {
     this.memory = options.memory || new Memory();
     this.memory.setIntSize(options.sizet_size || 4);
 
-    this.wasi = new WASI(["cart", ...options.args], options.env, options.fds);
+    this.wasi = new WASI(["cart", ...options.args], options.env, options.fds, {
+      debug: options.debug,
+    });
   }
 
   defaultImports(): Record<string, any> {
