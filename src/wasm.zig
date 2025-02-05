@@ -20,7 +20,9 @@ pub fn main() !void {
             .platform = plat,
             .options = .{
                 .temp = .{},
-                .require = .{},
+                .require = .{
+                    .custom_require_handler = customIncludeHandler,
+                },
                 .scheduler = .{ .err_fn = luau_error_fn },
             },
         },
@@ -125,6 +127,32 @@ pub fn threadStatus(handle: WasmThreadHandle) callconv(.c) u8 {
     }
     const l: *luau.Luau = @ptrFromInt(@as(usize, @intCast(@intFromEnum(handle))));
     return @intFromEnum(l.status());
+}
+
+extern fn cart_require_handler(
+    path_ptr: [*]const u8,
+    path_len: usize,
+    resolved_source_ptr: [*]const u8,
+    resolved_source_len: usize,
+    out_len: *usize,
+) ?[*]const u8;
+
+fn customIncludeHandler(l: *luau.Luau, path: []const u8, resolved_source: []const u8) ?[]const u8 {
+    const context = lib.Context.getContext(l) orelse return null;
+    var len: usize = 0;
+    const result = cart_require_handler(
+        path.ptr,
+        path.len,
+        resolved_source.ptr,
+        resolved_source.len,
+        &len,
+    );
+    if (result == null) {
+        return null;
+    }
+    const slice = result.?[0..len];
+    // defer std.heap.wasm_allocator.free(slice);
+    return context.temp.allocator().dupe(u8, slice) catch return null;
 }
 
 pub fn step(delta: f64) callconv(.c) bool {

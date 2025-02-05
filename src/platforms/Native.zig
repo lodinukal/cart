@@ -82,13 +82,16 @@ pub fn deleteFile(_: ?*anyopaque, path: []const u8) File.Error!void {
 }
 
 pub fn fileExists(_: ?*anyopaque, path: []const u8) bool {
-    const file = std.fs.cwd().openFile(path, .{ .mode = .read_only }) catch |err| switch (err) {
+    if (builtin.target.os.tag == .wasi) {
+        _ = std.os.fstatat_wasi(std.fs.cwd().fd, path, .{ .SYMLINK_FOLLOW = true }) catch return false;
+        return true;
+    }
+    _ = std.fs.cwd().statFile(path) catch |err| switch (err) {
         error.FileNotFound => return false,
         error.AccessDenied => return true,
         error.SharingViolation => return true,
         else => return false,
     };
-    defer file.close();
     return true;
 }
 

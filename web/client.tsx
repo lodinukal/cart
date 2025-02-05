@@ -1,6 +1,6 @@
 import type { Inode } from "@bjorn3/browser_wasi_shim";
 import { File } from "@bjorn3/browser_wasi_shim";
-import { Cart, CartOptions, Memory, stdIo } from "cart-luau";
+import { Cart, CartOptions, Memory, stdIo } from "../packages/cart";
 
 const shared_mem = new Memory();
 
@@ -39,6 +39,12 @@ async function run() {
   );
   const path = `/static/cart.wasm`;
   await cart.load(path);
+
+  cart.setCustomRequireHandler((path, resolved_source) => {
+    if (path === "EXAMPLE_REQUIRE") {
+      return `return { path = "${path}", from = "${resolved_source}" }`;
+    }
+  });
 
   const thread = cart.loadThreadFromString(example_name, contents);
   if (!thread.valid) {

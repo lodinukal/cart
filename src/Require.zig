@@ -1,15 +1,20 @@
 const Self = @This();
 
 require_stack: std.ArrayListUnmanaged(RequireContext) = undefined,
+custom_require_handler: ?HandlerFn = null,
 
 pub const Options = struct {
     max_require_depth: usize = 8,
+    custom_require_handler: ?HandlerFn = null,
 };
+
+pub const HandlerFn = *const fn (l: *luau.Luau, path: []const u8, from: []const u8) ?[]const u8;
 
 pub fn init(allocator: std.mem.Allocator, luau_state: *luau.Luau, options: Options) !Self {
     luau_state.register("require", lRequire);
     return .{
         .require_stack = try std.ArrayListUnmanaged(RequireContext).initCapacity(allocator, options.max_require_depth),
+        .custom_require_handler = options.custom_require_handler,
     };
 }
 
@@ -23,7 +28,7 @@ pub fn deinit(
 /// require a relative path without an alias
 ///
 /// returns true if the module was already loaded
-pub fn require(context: *Context, l: *luau.Luau, path: []const u8) Context.Error!bool {
+pub fn require(context: *Context, l: *luau.Luau, path: []const u8, preload_src: ?[]const u8) Context.Error!bool {
     const modules = getModuleTable(context, l);
 
     const t = context.temp.allocator();
@@ -38,8 +43,11 @@ pub fn require(context: *Context, l: *luau.Luau, path: []const u8) Context.Error
             return true;
         }
 
-        if (context.platform.fileExists(ext_path)) {
-            const thread = try context.loadThreadFromFile(ext_path);
+        if (context.platform.fileExists(ext_path) or preload_src != null) {
+            const thread = if (preload_src) |src|
+                try context.loadThreadFromString(path, src)
+            else
+                try context.loadThreadFromFile(ext_path);
             try context.execute(thread);
 
             const rctx = context.require.require_stack.addOneAssumeCapacity();
@@ -98,6 +106,26 @@ pub fn lRequire(l: *luau.Luau) !i32 {
     var path = l.toString(1) catch l.argError(1, "expected path as string");
     const source_location = Context.getSourceLocation(l);
 
+    const modules = getModuleTable(context, l);
+    const t = context.temp.allocator();
+
+    const preloaded_src = if (context.require.custom_require_handler) |f| f(l, path, source_location) else null;
+    const t_dupe_here = if (preloaded_src) |psrc|
+        t.dupeZ(u8, psrc) catch l.argError(1, "failed to dupe preloaded source")
+    else
+        null;
+
+    if (t_dupe_here) |psrc| {
+        defer t.free(psrc);
+
+        // get from modules
+        if (l.getField(modules, path) != .nil) {
+            return 1;
+        }
+
+        return if (try require(context, l, path, psrc)) 1 else l.yield(1);
+    }
+
     const ok_path = check: {
         inline for (&.{ "./", "../", "@" }) |prefix| {
             if (std.mem.startsWith(u8, path, prefix)) {
@@ -110,14 +138,10 @@ pub fn lRequire(l: *luau.Luau) !i32 {
         l.argError(1, "path must start with ./, ../, or @");
     }
 
-    const t = context.temp.allocator();
     path = fixPath(t, path) catch l.argError(1, "failed to fix path");
     defer t.free(path);
 
-    // std.log.info("require {s} from {s}", .{ path, source_location });
     const dirname = std.fs.path.dirname(source_location) orelse "";
-
-    const modules = getModuleTable(context, l);
 
     for (context.native_aliases.constSlice()) |alias| {
         const prefix = std.fmt.allocPrint(t, "@{s}/", .{alias}) catch
@@ -136,14 +160,9 @@ pub fn lRequire(l: *luau.Luau) !i32 {
         }
     }
 
-    // if (std.mem.startsWith(u8, path, "@cart/")) {
-    //     if (l.getField(modules, path) != .nil) {
-    //         return 1;
-    //     }
-    //     l.argError(1, "cart module not found");
-    // } else
-
-    if (std.mem.startsWith(u8, path, "@")) {
+    const resolved_path: []const u8 =
+        if (std.mem.startsWith(u8, path, "@"))
+    blk: {
         if (l.getField(modules, path) != .nil) {
             return 1;
         }
@@ -152,24 +171,16 @@ pub fn lRequire(l: *luau.Luau) !i32 {
         const found_alias = context.rc.aliases.get(alias) orelse l.argError(1, "alias does not exist");
         const resolved_path = std.fs.path.joinZ(t, &.{ found_alias, path[until..] }) catch
             l.argError(1, "failed to join path");
-        defer t.free(resolved_path);
+        break :blk resolved_path;
+    } else std.fs.path.joinZ(t, &.{ dirname, path }) catch
+        l.argError(1, "failed to join path");
+    defer t.free(resolved_path);
 
-        const fixed_resolved_path = fixPath(t, resolved_path) catch
-            l.argError(1, "failed to fix path");
-        defer t.free(fixed_resolved_path);
+    const fixed_resolved_path = fixPath(t, resolved_path) catch
+        l.argError(1, "failed to fix path");
+    defer t.free(fixed_resolved_path);
 
-        return if (try require(context, l, fixed_resolved_path)) 1 else l.yield(1);
-    } else {
-        const resolved_path = std.fs.path.joinZ(t, &.{ dirname, path }) catch
-            l.argError(1, "failed to join path");
-        defer t.free(resolved_path);
-
-        const fixed_resolved_path = fixPath(t, resolved_path) catch
-            l.argError(1, "failed to fix path");
-        defer t.free(fixed_resolved_path);
-
-        return if (try require(context, l, fixed_resolved_path)) 1 else l.yield(1);
-    }
+    return if (try require(context, l, fixed_resolved_path, null)) 1 else l.yield(1);
 }
 
 const MODULE_TABLE = "_MODULES";

@@ -53,7 +53,7 @@ app.get("/example/*", async (c) => {
 const port = parseInt(process.env.PORT!) || 3000;
 console.log(`Running at http://localhost:${port}`);
 
-const release = "v0.1.2";
+const release = "v0.1.4";
 const path = `https://github.com/lodinukal/cart/releases/download/${release}/cart.wasm`;
 
 // download into ./dist/

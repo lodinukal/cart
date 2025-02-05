@@ -465,6 +465,9 @@ export class Cart {
   ];
   maxHandle: number = TaggedValueType.start;
   freeHandles: Array<number> = [];
+  customRequireHandler:
+    | ((path: string, resolved_source: string) => string | undefined)
+    | undefined;
 
   constructor(options: CartOptions) {
     this.memory = options.memory || new Memory();
@@ -524,10 +527,30 @@ export class Cart {
               cart_on_fetched_error(context);
             });
         },
-
-        // cart_web_as_number(handle: Handle, n: *f64) bool;
-        // cart_web_as_boolean(handle: Handle, b: *bool) bool;
-        // cart_web_as_buffer(handle: Handle, ptr: *?[*]const u8, len: *usize) bool;
+        cart_require_handler(
+          path_ptr: number,
+          path_len: number,
+          resolved_source_ptr: number,
+          resolved_source_len_ptr: number,
+          out_len_ptr: number
+        ): number {
+          if (self.customRequireHandler === undefined) {
+            return 0;
+          }
+          const path = self.memory.loadString(path_ptr, path_len);
+          const resolved_source = self.memory.loadString(
+            resolved_source_ptr,
+            resolved_source_len_ptr
+          );
+          const result = self.customRequireHandler(path, resolved_source);
+          if (result === undefined) {
+            return 0;
+          }
+          const result_ptr = self.memory.alloc(result.length);
+          self.memory.storeString(result_ptr, result);
+          self.memory.storeusize(out_len_ptr, result.length);
+          return result_ptr;
+        },
 
         cart_web_string(ptr: number, len: number): number {
           if (len === 0) return TaggedValueType.empty_string;
@@ -718,7 +741,11 @@ export class Cart {
             }
             args.push(value);
           }
-          const result = obj[name](...args);
+          if (obj[name] === undefined) {
+            console.error(`No method ${name} on object ${obj}`);
+            return TaggedValueType.undefined;
+          }
+          let result = obj[name](...args);
           const returning = self.alloc_handle();
           self.handles[returning] = new TaggedValue(result);
           return returning;
@@ -807,6 +834,12 @@ export class Cart {
     this.memory.free(path_ptr);
     this.memory.free(source_ptr);
     return new LuauThread(this, thread_ptr);
+  }
+
+  setCustomRequireHandler(
+    f: (path: string, resolved_source: string) => string | undefined
+  ) {
+    this.customRequireHandler = f;
   }
 
   async load(cart_wasm_path: string) {
