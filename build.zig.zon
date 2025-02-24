@@ -28,13 +28,13 @@
             .url = "git+https://github.com/vezel-dev/libffi.git#4ff4784890761375208c9efa197cfe3774c5fd0e",
             .hash = "1220cfa2f61bdac1107a04b376f0a64160b474736326c00ba64f53a02062419073df",
         },
-        .luau = .{
-            .path = "../zig-luau",
-        },
         // .luau = .{
-        //     .url = "git+https://github.com/lodinukal/zig-luau#934a464de22f30dcfef377de72509fc845657c6d",
-        //     .hash = "122078254b0e8237dca1124f0f3424b83ccc0c53374c7224edfd8bcd031515b2020c",
+        //     .path = "../zig-luau",
         // },
+        .luau = .{
+            .url = "git+https://github.com/lodinukal/zig-luau.git#0168071cb7ba3e6f50cddf3181a3d56653722829",
+            .hash = "12202f27a25c81a7f3c72196339f3e8fd7915a4a9503a69ee9d99dee63232d69fb2d",
+        },
     },
     .paths = .{
         "build.zig",
