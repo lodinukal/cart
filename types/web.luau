@@ -49,4 +49,10 @@ function web.global(name: string): Handle
 	return nil :: any
 end
 
+--- access a web assembly export by name (useful for loading other web assembly modules)
+function web.export(name: string): Handle
+	local _ = name
+	return nil :: any
+end
+
 return web

@@ -53,19 +53,19 @@ app.get("/example/*", async (c) => {
 const port = parseInt(process.env.PORT!) || 3000;
 console.log(`Running at http://localhost:${port}`);
 
-const release = "v0.1.4";
+const release = "v0.1.5";
 const path = `https://github.com/lodinukal/cart/releases/download/${release}/cart.wasm`;
 
 // download into ./dist/
 
-fetch(path).then(async (res) => {
-  if (res.ok === false) {
-    throw new Error(`Failed to fetch wasm form ${path}: ${res.statusText}`);
-  }
-  const file = Bun.file("./dist/cart.wasm");
-  const writer = file.writer();
-  await writer.write(await res.arrayBuffer());
-});
+// fetch(path).then(async (res) => {
+//   if (res.ok === false) {
+//     throw new Error(`Failed to fetch wasm form ${path}: ${res.statusText}`);
+//   }
+//   const file = Bun.file("./dist/cart.wasm");
+//   const writer = file.writer();
+//   await writer.write(await res.arrayBuffer());
+// });
 
 export default {
   port,

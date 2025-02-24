@@ -77,7 +77,20 @@ function fs.delete_file(path: string): boolean
 	return nil :: any
 end
 
-function fs.exists(path: string): boolean
+export type Kind = 
+     | "block_device"
+     | "character_device"
+     | "directory"
+     | "named_pipe"
+     | "sym_link"
+     | "file"
+     | "unix_domain_socket"
+     | "whiteout"
+     | "door"
+     | "event_port"
+     | "unknown"
+
+function fs.kind(path: string): Kind?
 	local _ = path
 	return nil :: any
 end

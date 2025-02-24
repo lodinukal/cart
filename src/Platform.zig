@@ -7,7 +7,7 @@ pub const VTable = struct {
     open_file_impl: *const fn (ctx: ?*anyopaque, path: []const u8, flags: File.OpenFlags) File.Error!File,
     close_file_impl: *const fn (ctx: ?*anyopaque, file: File) void,
     delete_file_impl: *const fn (ctx: ?*anyopaque, path: []const u8) File.Error!void,
-    file_exists_impl: *const fn (ctx: ?*anyopaque, path: []const u8) bool,
+    file_kind_impl: *const fn (ctx: ?*anyopaque, path: []const u8) ?std.fs.File.Kind,
     file_reader_impl: *const fn (ctx: ?*anyopaque, file: File) File.Error!std.fs.File.Reader,
     file_writer_impl: *const fn (ctx: ?*anyopaque, file: File) File.Error!std.fs.File.Writer,
     file_set_readonly_impl: *const fn (ctx: ?*anyopaque, file: File, readonly: bool) File.Error!void,
@@ -47,8 +47,8 @@ pub inline fn deleteFile(self: Self, path: []const u8) File.Error!void {
     return self.vtable.delete_file_impl(self.context, path);
 }
 
-pub inline fn fileExists(self: Self, path: []const u8) bool {
-    return self.vtable.file_exists_impl(self.context, path);
+pub inline fn fileKind(self: Self, path: []const u8) ?std.fs.File.Kind {
+    return self.vtable.file_kind_impl(self.context, path);
 }
 
 pub inline fn createClient(self: Self, allocator: std.mem.Allocator) HttpClient.Error!HttpClient {

@@ -5,7 +5,7 @@ const vtable: Platform.VTable = .{
     .open_file_impl = openFile,
     .close_file_impl = closeFile,
     .delete_file_impl = deleteFile,
-    .file_exists_impl = fileExists,
+    .file_kind_impl = fileKind,
     .file_reader_impl = fileReader,
     .file_writer_impl = fileWriter,
     // .file_get_permissions_impl: *const fn (ctx: ?*anyopaque, file: File) Permissions,
@@ -81,18 +81,18 @@ pub fn deleteFile(_: ?*anyopaque, path: []const u8) File.Error!void {
     };
 }
 
-pub fn fileExists(_: ?*anyopaque, path: []const u8) bool {
+pub fn fileKind(_: ?*anyopaque, path: []const u8) ?std.fs.File.Kind {
     if (builtin.target.os.tag == .wasi) {
-        _ = std.os.fstatat_wasi(std.fs.cwd().fd, path, .{ .SYMLINK_FOLLOW = true }) catch return false;
-        return true;
+        const stat = std.os.fstatat_wasi(std.fs.cwd().fd, path, .{ .SYMLINK_FOLLOW = true }) catch return null;
+        return std.fs.File.Stat.fromWasi(stat).kind;
     }
-    _ = std.fs.cwd().statFile(path) catch |err| switch (err) {
-        error.FileNotFound => return false,
-        error.AccessDenied => return true,
-        error.SharingViolation => return true,
-        else => return false,
+    const stat = std.fs.cwd().statFile(path) catch |err| switch (err) {
+        error.FileNotFound => return null,
+        error.AccessDenied => return .unknown,
+        error.SharingViolation => return .unknown,
+        else => return null,
     };
-    return true;
+    return stat.kind;
 }
 
 pub fn fileReader(_: ?*anyopaque, file: File) File.Error!std.fs.File.Reader {

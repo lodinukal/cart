@@ -1,6 +1,5 @@
-import type { Inode } from "@bjorn3/browser_wasi_shim";
-import { File } from "@bjorn3/browser_wasi_shim";
-import { Cart, CartOptions, Memory, stdIo } from "../packages/cart";
+import { Inode } from "@bjorn3/browser_wasi_shim";
+import { Cart, CartOptions, Memory, stdIo, file, directory } from "../packages/cart";
 
 const shared_mem = new Memory();
 
@@ -18,6 +17,12 @@ let cart: Cart;
 
 async function run() {
   const fs = new Map<string, Inode>();
+
+  // adding files so luau can access them
+  fs.set("example.luau", file("return 42"))
+  fs.set("shared", directory([
+    ["init.luau", file("return 500")]
+  ]))
 
   const example_with_args_name = search_params.get("example") || "dom.luau";
   const split_example_with_args = example_with_args_name.split("|");
@@ -37,8 +42,15 @@ async function run() {
       fds: stdIo("", fs),
     })
   );
+
   const path = `/static/cart.wasm`;
   await cart.load(path);
+
+  // const extra_lib = "/static/lib_test.wasm";
+  // await cart.load(extra_lib);
+
+  // const adder = cart.memory.exports!.my_add as (a: number, b: number) => number;
+  // console.log(adder(1, 2));
 
   cart.setCustomRequireHandler((path, resolved_source) => {
     if (path === "EXAMPLE_REQUIRE") {

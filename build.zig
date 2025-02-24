@@ -18,14 +18,16 @@ pub fn build(b: *std.Build) !void {
     const in_target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const target = if (in_target.result.isWasm()) wasm_target else in_target;
+    const is_wasm = in_target.result.ofmt == .wasm;
+
+    const target = if (in_target.result.ofmt == .wasm) wasm_target else in_target;
 
     const shared_luau = b.option(
         bool,
         "shared",
         "Build a shared library luau instead of a static library. This allows for dynamic luau libraries to be opened.",
-    ) orelse !target.result.isWasm();
-    if (target.result.isWasm() and shared_luau) {
+    ) orelse !is_wasm;
+    if (is_wasm and shared_luau) {
         std.debug.panic("Cannot build shared library for wasm target; pass -Dshared=false or change target.", .{});
     }
 
@@ -35,7 +37,7 @@ pub fn build(b: *std.Build) !void {
     config.addOption(std.SemanticVersion, "version", version.version);
 
     const has_ffi = blk: {
-        if (target.result.isWasm()) break :blk false;
+        if (is_wasm) break :blk false;
         if (target.result.os.tag == .windows and target.result.cpu.arch == .aarch64) break :blk false;
         break :blk true;
     };
@@ -76,7 +78,7 @@ pub fn build(b: *std.Build) !void {
         // only contains e.g. external object files, you can make this `null`.
         // In this case the main source file is merely a path, however, in more
         // complicated build scripts, this could be a generated file.
-        .root_source_file = if (target.result.isWasm()) b.path("src/wasm.zig") else b.path("src/cli.zig"),
+        .root_source_file = if (is_wasm) b.path("src/wasm.zig") else b.path("src/cli.zig"),
         .target = target,
         .optimize = optimize,
         .strip = true,
@@ -97,7 +99,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    if (!target.result.isWasm() and optimize == .Debug) {
+    if (!is_wasm and optimize == .Debug) {
         const shared_test = b.addSharedLibrary(.{
             .name = "shared_test",
             .root_source_file = b.path("src/shared_test.zig"),
@@ -121,8 +123,8 @@ pub fn build(b: *std.Build) !void {
         .root_module = cli_mod,
         .optimize = optimize,
     });
-    if (target.result.isWasm()) {
-        lib_mod.export_symbol_names = &.{
+    if (is_wasm) {
+        lib_mod.export_symbol_names = &[_][]const u8{
             "cart_alloc",
             "cart_free",
             "cart_popLastError",

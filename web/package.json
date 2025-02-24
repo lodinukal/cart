@@ -16,7 +16,7 @@
   },
   "scripts": {
     "lint": "npx prettier . --write",
-    "dev": "concurrently \"npm:dev:*\"",
+    "dev": "concurrently \"bun:dev:*\"",
     "dev:server": "bun --watch ./server.ts"
   }
 }

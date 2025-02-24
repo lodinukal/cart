@@ -211,6 +211,10 @@ pub fn open(l: *luau.Luau) void {
     l.pushFunction(lGlobal, "@cart/web.global");
     l.setTable(-3);
 
+    l.pushString("export");
+    l.pushFunction(lExport, "@cart/web.export");
+    l.setTable(-3);
+
     l.setReadOnly(-1, true);
 }
 
@@ -238,6 +242,7 @@ extern fn cart_web_invoke(
 ) Handle;
 extern fn cart_web_global(ptr: [*]const u8, len: usize) Handle;
 extern fn cart_web_function(l: usize, f: i32) Handle;
+extern fn cart_web_wasm_export(name_ptr: [*]const u8, name_len: usize) Handle;
 
 // 1: string
 // 2: as object
@@ -325,6 +330,13 @@ fn lMarshal(l: *luau.Luau) !i32 {
 fn lGlobal(l: *luau.Luau) !i32 {
     const name = try l.toString(1);
     const handle = cart_web_global(name.ptr, name.len);
+    _ = try LHandle.push(l, handle);
+    return 1;
+}
+
+fn lExport(l: *luau.Luau) !i32 {
+    const name = try l.toString(1);
+    const handle = cart_web_wasm_export(name.ptr, name.len);
     _ = try LHandle.push(l, handle);
     return 1;
 }

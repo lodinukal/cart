@@ -7,7 +7,7 @@ pub fn main() !void {
     const http_client = try plat.createClient(allocator);
     lib.Context.modules.net.setClient(http_client);
 
-    const luaurc = if (plat.fileExists(".luaurc")) blk: {
+    const luaurc = if (plat.fileKind(".luaurc") != null) blk: {
         const luaurc_file = try plat.openFile(".luaurc", .{ .mode = .read_only, .create_if_not_exists = false });
         defer plat.closeFile(luaurc_file);
 

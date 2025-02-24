@@ -127,8 +127,8 @@ pub fn open(l: *luau.Luau) void {
     util.pushFunction(l, lOpenFile, "@cart/fs.open_file");
     l.setTable(-3);
 
-    l.pushString("exists");
-    util.pushFunction(l, lExists, "@cart/fs.exists");
+    l.pushString("kind");
+    util.pushFunction(l, lKind, "@cart/fs.kind");
     l.setTable(-3);
 
     _ = result.LError.push(l, FS_ERROR);
@@ -308,10 +308,14 @@ fn lOpenFile(l: *luau.Luau) i32 {
 }
 
 // 1: string path
-fn lExists(l: *luau.Luau) i32 {
+fn lKind(l: *luau.Luau) i32 {
     const context = Context.getContext(l) orelse return 0;
     const path = l.toString(1) catch l.argError(1, "expected path as string");
-    l.pushBoolean(context.platform.fileExists(path));
+    if (context.platform.fileKind(path)) |kind| {
+        l.pushString(@tagName(kind));
+    } else {
+        l.pushNil();
+    }
     return 1;
 }
 

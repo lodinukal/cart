@@ -21,7 +21,7 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v1
         with:
-          version: 0.14.0-dev.2540+f857bf72e
+          version: 0.14.0-dev.3286+05d8b565a
 
       - name: Get Version
         id: version

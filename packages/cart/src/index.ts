@@ -3,7 +3,7 @@ export class Memory {
   exports?: Record<string, any>;
   sizet_size: number = 4;
 
-  constructor() {}
+  constructor() { }
 
   setMemory(memory: WebAssembly.Memory) {
     this.memory = memory;
@@ -270,6 +270,7 @@ import {
   ConsoleStdout,
   PreopenDirectory,
   Inode,
+  Directory,
 } from "@bjorn3/browser_wasi_shim";
 
 export function stdIo(
@@ -406,7 +407,7 @@ export class TaggedValue {
     this.free_fn(this);
   }
 
-  private static defaultFree(value: TaggedValue) {}
+  private static defaultFree(value: TaggedValue) { }
 }
 
 export class LuaFunction {
@@ -455,6 +456,8 @@ export class LuaFunction {
 export class Cart {
   memory: Memory;
   wasi: WASI;
+
+  started: boolean = false;
 
   handles: Array<TaggedValue | undefined> = [
     new TaggedValue(null),
@@ -770,6 +773,14 @@ export class Cart {
           );
           return handle;
         },
+
+        // grab something from memory export
+        cart_web_wasm_export(name_ptr: number, name_len: number): number {
+          const name = self.memory.loadString(name_ptr, name_len);
+          const handle = self.alloc_handle();
+          self.handles[handle] = new TaggedValue(self.memory.exports![name]);
+          return handle;
+        },
       },
       wasi_snapshot_preview1: this.wasi.wasiImport,
     };
@@ -842,14 +853,14 @@ export class Cart {
     this.customRequireHandler = f;
   }
 
-  async load(cart_wasm_path: string) {
-    const response = await fetch(cart_wasm_path);
-    const buffer = await response.arrayBuffer();
-    const module = await WebAssembly.compile(buffer);
-    await this.run(module);
+  async load(path: string) {
+    return fetch(path)
+      .then(async (res) => res.arrayBuffer())
+      .then(async (buffer) => WebAssembly.compile(buffer))
+      .then(async (module) => this.run(module));
   }
 
-  private async run(
+  async run(
     module: WebAssembly.Module,
     extra_imports: Record<string, any> = {}
   ) {
@@ -872,13 +883,20 @@ export class Cart {
         );
       this.memory.setMemory(exports.memory as WebAssembly.Memory);
     }
-    const start = exports._start as () => void;
-    this.wasi.start({
-      exports: {
-        memory: this.memory.memory!,
-        _start: start,
-      },
-    });
+    const start = exports._start as (() => void) | undefined;
+    if (start !== undefined && !this.started) {
+      this.wasi.start({
+        exports: {
+          memory: this.memory.memory!,
+          _start: start,
+        },
+      });
+      this.started = true;
+    } else if (start !== undefined && this.started) {
+      console.warn(
+        "Ignoring _start function as it was already called once in another module"
+      );
+    }
 
     const end = exports.cart_end as (() => void) | undefined;
 
@@ -905,3 +923,6 @@ export class Cart {
     }
   }
 }
+
+export const file = (content: string) => new File(new TextEncoder().encode(content))
+export const directory = (entries: [string, Inode][]) => new Directory(new Map<string, Inode>(entries))

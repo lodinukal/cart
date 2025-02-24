@@ -43,7 +43,7 @@ pub fn require(context: *Context, l: *luau.Luau, path: []const u8, preload_src: 
             return true;
         }
 
-        if (context.platform.fileExists(ext_path) or preload_src != null) {
+        if (context.platform.fileKind(ext_path) == .file or preload_src != null) {
             const thread = if (preload_src) |src|
                 try context.loadThreadFromString(path, src)
             else
@@ -83,12 +83,12 @@ pub const RequireContext = struct {
             .err_error,
             => {
                 cart_context.allocator.free(context.path);
-                _ = cart_context.require.require_stack.popOrNull();
+                _ = cart_context.require.require_stack.pop();
                 requirer_thread.pushString("require failed");
                 return .err;
             },
         }
-        defer _ = cart_context.require.require_stack.popOrNull();
+        defer _ = cart_context.require.require_stack.pop();
         defer cart_context.allocator.free(context.path);
 
         const modules = getModuleTable(cart_context, requirer_thread);
