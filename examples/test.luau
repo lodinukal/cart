@@ -1,9 +1,9 @@
 local fs = require("@cart/fs")
 local task = require("@cart/task")
 
-print(`{fs.exists("help.temp.txt")} help`)
-print(`{fs.exists("help2.temp.txt")} help2`)
-print(`{fs.exists("help3.temp.txt")} help3`)
+print(`{fs.kind("help.temp.txt")} help`)
+print(`{fs.kind("help2.temp.txt")} help2`)
+print(`{fs.kind("help3.temp.txt")} help3`)
 
 local file = fs.open_file("help.temp.txt", {
 	create_if_not_exists = true,

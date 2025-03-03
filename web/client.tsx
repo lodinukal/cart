@@ -63,6 +63,18 @@ async function run() {
     throw new Error("Failed to load example");
   }
   await thread.execute();
+
+
+  // for the thread let's get the top of the stack
+  // memory for string len
+  const str = thread.toString(-1);
+  console.log(str);
+  // const num = thread.toNumber(-1);
+  // console.log(num);
+  const bool = thread.toBoolean(-1);
+  console.log(bool);
+  const top_stack = thread.top;
+  console.log(top_stack);
 }
 
 run();

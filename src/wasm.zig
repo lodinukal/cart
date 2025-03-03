@@ -56,7 +56,7 @@ pub fn popLastError() callconv(.c) ?[*:0]const u8 {
     return @errorName(last_wasm_error.?);
 }
 
-const WasmThreadHandle = enum(u64) { null = 0, _ };
+const WasmThreadHandle = enum(u32) { null = 0, _ };
 
 pub fn loadThreadFromFile(name_ptr: [*]const u8, name_len: usize) callconv(.c) WasmThreadHandle {
     const name = name_ptr[0..name_len];

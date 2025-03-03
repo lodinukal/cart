@@ -127,6 +127,7 @@ pub const modules = struct {
     pub const web = @import("standard/web.zig");
     pub const process = @import("standard/process.zig");
     pub const pretty = @import("standard/pretty.zig");
+    pub const json = @import("standard/json.zig");
 };
 
 pub const CART_MODULES: []const Module = &[_]Module{
@@ -140,6 +141,7 @@ pub const CART_MODULES: []const Module = &[_]Module{
     .{ .name = "web", .open = modules.web.open },
     .{ .name = "process", .open = modules.process.open },
     .{ .name = "pretty", .open = modules.pretty.open },
+    .{ .name = "json", .open = modules.json.open },
 };
 
 pub fn loadCartStandard(self: *Self) !void {

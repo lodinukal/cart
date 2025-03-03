@@ -246,7 +246,7 @@ export class Memory {
     this.storeu8(ptr + str.length, 0);
   }
 
-  alloc(len: number) {
+  alloc(len: number): number {
     const ptr = this.exports!["cart_alloc"](len);
     return ptr;
   }
@@ -357,6 +357,38 @@ export class LuauThread {
       "cart_threadStatus"
     ] as (thread: number) => number;
     return cart_threadStatus(this.handle);
+  }
+
+  toString(idx: number): string {
+    const lua_tolstring = this.cart.memory.exports![
+      "lua_tolstring"
+    ] as (thread: number, idx: number, ptr_len: number) => number;
+    const ptr_len = this.cart.memory.alloc(4);
+    const ptr = lua_tolstring(this.handle, idx, ptr_len);
+    const len = this.cart.memory.loadi32(ptr_len);
+    this.cart.memory.free(ptr_len);
+    return this.cart.memory.loadString(ptr, len);
+  }
+
+  toNumber(idx: number): number {
+    const lua_tonumberx = this.cart.memory.exports![
+      "lua_tonumberx"
+    ] as (thread: number, idx: number) => number;
+    return lua_tonumberx(this.handle, idx);
+  }
+
+  toBoolean(idx: number): boolean {
+    const lua_toboolean = this.cart.memory.exports![
+      "lua_toboolean"
+    ] as (thread: number, idx: number) => number;
+    return lua_toboolean(this.handle, idx) !== 0;
+  }
+
+  get top(): number {
+    const lua_gettop = this.cart.memory.exports![
+      "lua_gettop"
+    ] as (thread: number) => number;
+    return lua_gettop(this.handle);
   }
 }
 

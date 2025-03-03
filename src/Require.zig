@@ -161,19 +161,18 @@ pub fn lRequire(l: *luau.Luau) !i32 {
     }
 
     const resolved_path: []const u8 =
-        if (std.mem.startsWith(u8, path, "@"))
-    blk: {
-        if (l.getField(modules, path) != .nil) {
-            return 1;
-        }
-        const until = std.mem.indexOf(u8, path, "/") orelse path.len;
-        const alias = path[1..until];
-        const found_alias = context.rc.aliases.get(alias) orelse l.argError(1, "alias does not exist");
-        const resolved_path = std.fs.path.joinZ(t, &.{ found_alias, path[until..] }) catch
+        if (std.mem.startsWith(u8, path, "@")) blk: {
+            if (l.getField(modules, path) != .nil) {
+                return 1;
+            }
+            const until = std.mem.indexOf(u8, path, "/") orelse path.len;
+            const alias = path[1..until];
+            const found_alias = context.rc.aliases.get(alias) orelse l.argError(1, "alias does not exist");
+            const resolved_path = std.fs.path.joinZ(t, &.{ found_alias, path[until..] }) catch
+                l.argError(1, "failed to join path");
+            break :blk resolved_path;
+        } else std.fs.path.joinZ(t, &.{ dirname, path }) catch
             l.argError(1, "failed to join path");
-        break :blk resolved_path;
-    } else std.fs.path.joinZ(t, &.{ dirname, path }) catch
-        l.argError(1, "failed to join path");
     defer t.free(resolved_path);
 
     const fixed_resolved_path = fixPath(t, resolved_path) catch
