@@ -1,98 +1,53 @@
+var debug_allocator: std.heap.DebugAllocator(.{}) = .{};
 pub fn main() !void {
-    var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = general_purpose_allocator.allocator();
-    defer _ = general_purpose_allocator.deinit();
+    const gpa, const is_debug = gpa: {
+        if (native_os == .wasi) break :gpa .{ std.heap.wasm_allocator, false };
+        break :gpa switch (builtin.mode) {
+            .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
+            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
+        };
+    };
+    defer {
+        if (is_debug) _ = debug_allocator.deinit();
+    }
 
-    const plat = lib.Platform.Native.platform();
-    const http_client = try plat.createClient(allocator);
-    lib.Context.modules.net.setClient(http_client);
-
-    const luaurc = if (plat.fileKind(".luaurc") != null) blk: {
-        const luaurc_file = try plat.openFile(".luaurc", .{ .mode = .read_only, .create_if_not_exists = false });
-        defer plat.closeFile(luaurc_file);
-
-        const content = (try luaurc_file.reader(plat))
-            .readAllAlloc(allocator, std.math.maxInt(u16)) catch return error.OutOfMemory;
-        defer allocator.free(content);
-        break :blk try lib.luaurc.Config.parse(allocator, allocator, content);
-    } else try lib.luaurc.Config.parse(allocator, allocator,
-        \\ { "languageMode": "strict" }
-    );
-
-    cli_state = .{
-        .allocator = allocator,
-        .platform = plat,
-        .http_client = http_client,
-        .luaurc = luaurc,
-        .context = .{
-            .rc = luaurc,
-            .allocator = allocator,
-            .platform = plat,
-            .options = .{
-                .temp = .{},
-                .require = .{},
-                .scheduler = .{ .err_fn = luau_error_fn },
-            },
+    const context: *cart.Context = try .create(gpa, .{
+        .extra_aliases = &.{
+            cart.require.preloadedKVComptime("test_caching"),
         },
-    };
-    try cli_state.context.init();
-    try cli_state.context.loadCartStandard();
-    defer cli_state.deinit();
+    });
+    defer context.destroy();
+    const l = context.state;
 
-    var arg_it = try std.process.argsWithAllocator(allocator);
-    defer arg_it.deinit();
-    // skip executable name
-    _ = arg_it.next();
-    const file_name = arg_it.next() orelse {
-        std.log.err("expected file name", .{});
-        return error.MissingArgument;
-    };
+    l.pushLengthString("should be cached!");
+    try context.putCache("test_caching", .at(-1));
 
-    const thread = try cli_state.context.loadThreadFromFile(file_name);
-    try cli_state.context.execute(thread);
-    cli_state.context.temp.nextFrame();
+    const code =
+        \\print("Hello, world!")
+        \\assert(1 == 1)
+        \\local cached = require("@test_caching")
+    ;
 
-    var start_time: f64 = @floatFromInt(std.time.milliTimestamp());
-    while (!cli_state.context.isWorkDone()) {
-        const current_time: f64 = @floatFromInt(std.time.milliTimestamp());
-        const delta = (current_time - start_time) / 1000.0;
-        start_time = current_time;
-        if (!step(delta)) break;
+    const compiled = try cart.luau.compile(
+        gpa,
+        gpa,
+        code,
+        context.compile_options,
+    );
+    defer compiled.deinit(gpa);
+
+    try std.testing.expect(l.load("@test.luau", compiled.bytes));
+    if (l.pcall(0, 0, .none) != .ok) {
+        if (l.isString(.at(-1))) {
+            std.debug.print("Error: {s}\n", .{l.toLengthString(.at(-1))});
+        } else {
+            std.debug.print("Unknown error\n", .{});
+        }
     }
-}
-
-const CliState = struct {
-    allocator: std.mem.Allocator,
-    platform: lib.Platform,
-    http_client: lib.Platform.HttpClient,
-    luaurc: lib.luaurc.Config,
-    context: lib.Context,
-
-    pub fn deinit(self: *CliState) void {
-        self.luaurc.deinit();
-        self.context.deinit();
-
-        self.http_client.destroy();
-    }
-};
-var cli_state: CliState = undefined;
-
-pub fn step(delta: f64) callconv(.c) bool {
-    cli_state.context.delta_time = delta;
-    cli_state.context.poll() catch return !cli_state.context.isWorkDone();
-    cli_state.context.temp.nextFrame();
-    cli_state.context.main_state.gcCollect();
-    return !cli_state.context.isWorkDone();
-}
-
-fn luau_error_fn(err: []const u8) void {
-    std.log.err("{s}", .{err});
 }
 
 const std = @import("std");
 const builtin = @import("builtin");
+const native_os = builtin.os.tag;
 
-/// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
-const lib = @import("cart_lib");
-
-const luau = @import("luau");
+const cart = @import("cart");

@@ -1,0 +1,7 @@
+{
+    "luau-lsp.types.definitionFiles": [
+        "./types/cart.d.luau"
+    ],
+    "luau-lsp.types.robloxSecurityLevel": "None",
+    "luau-lsp.platform.type": "standard"
+}

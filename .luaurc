@@ -6,7 +6,8 @@
   "lintErrors": false,
   "typeErrors": true,
   "globals": [
-    "warn"
+    "warn",
+    "testlog"
   ],
   "aliases": {
     "cart": "./types/",
