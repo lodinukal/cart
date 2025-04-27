@@ -46,6 +46,7 @@ pub const Error = error{
     InvalidArgument,
     NotImplemented,
     NotAFile,
+    InvalidFile,
     FileNotFound,
     PathAlreadyExists,
     AccessDenied,
@@ -103,6 +104,7 @@ pub fn errorName(err: Error) []const u8 {
         error.InvalidArgument => return "invalid argument",
         error.NotImplemented => return "not implemented",
         error.NotAFile => return "not a file",
+        error.InvalidFile => return "invalid file",
         error.FileNotFound => return "file was not found",
         error.PathAlreadyExists => return "path already exists",
         error.AccessDenied => return "access denied",
@@ -251,11 +253,19 @@ pub const File = struct {
     }
 
     pub fn to(l: *luau.State, at: luau.vm.Index) !*File {
-        const file: *File = @alignCast(@ptrCast(l.toUserdata(at) orelse return error.NotAFile));
-        if (!file.valid) return error.NotAFile;
+        const file: *File = @alignCast(@ptrCast(l.checkUserdata(at, file_metatable) orelse return error.NotAFile));
+        if (!file.valid) return error.InvalidFile;
         return file;
     }
 };
+
+fn fileDtor(file: *File) callconv(.c) void {
+    if (file.valid) {
+        file.file.close();
+        file.allocator.free(file.path);
+        file.valid = false;
+    }
+}
 
 fn openFileHandled(l: *luau.State) i32 {
     var diagnostics: cart.util.Diagnostics = undefined;
@@ -339,23 +349,13 @@ fn createFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!luau.v
     return .at(-1);
 }
 
-fn fileDtor(file: *File) callconv(.c) void {
-    if (file.valid) {
-        file.file.close();
-        file.allocator.free(file.path);
-        file.valid = false;
-    }
-}
-
 fn closeFileHandled(l: *luau.State) i32 {
     return cart.util.returnValue(l, bool, closeFile(l));
 }
 
 fn closeFile(l: *luau.State) bool {
     const file: *File = File.to(l, .at(1)) catch return false;
-    file.file.close();
-    file.valid = false;
-    file.allocator.free(file.path);
+    fileDtor(file);
     return true;
 }
 

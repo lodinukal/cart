@@ -84,7 +84,7 @@ assert(res.value, "createfile should return a file")
 
 assert(fs.tell(res.value) == 0, "file should be at the start")
 fs.writefile(res.value, "hello world")
-assert(fs.tell(res.value) == 11, "file should be at the end after write")
+assert(fs.tell(res.value) == 11, `file should be at the end after write, is at {fs.tell(res.value)}`)
 
 local seek_end_res = fs.seekend(res.value, 0)
 assert(seek_end_res.ok, "seek to end should be ok")
@@ -200,3 +200,8 @@ fs.delete("readonly.temp.txt")
 
 assert(fs.closefile(res.value) == true, "file should close successfully")
 assert(fs.closefile(res.value) == false, "file should be closed and return false on additional close")
+
+local success = pcall(function()
+	fs.abspath(newproxy(true))
+end)
+assert(success == false, `fs functions should fail if passed file is not a file handle`)

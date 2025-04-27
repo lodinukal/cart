@@ -30,12 +30,9 @@
             .hash = "1220cfa2f61bdac1107a04b376f0a64160b474736326c00ba64f53a02062419073df",
         },
         .luau = .{
-            .path = "../luau",
+            .url = "git+https://github.com/lodinukal/luau.git#2a8c2b263892c70b67cf28365e82fc754298c994",
+            .hash = "luau-0.670.0-SSbB9LruZQAHaxkYBT7hvOoMfgUjj1CZGJB8298_PnlZ",
         },
-        // .luau = .{
-        //     .url = "git+https://github.com/lodinukal/luau.git#f3a889f1c9c49390d25d10b39c9a31b2a7f76369",
-        //     .hash = "luau-0.669.0-SSbB9Os9ZQD62YTcRP1WlkW9bRVst1YXPCujs8rjgbHL",
-        // },
         .mold = .{
             .url = "git+https://github.com/rui314/mold#f7b1920f849cf6bc8120ce60f474e6580bdbdeb4",
             .hash = "N-V-__8AAFLHPQIPoTogdmvKrh4hOeoZtrJIqyCUQEQGL5vF",

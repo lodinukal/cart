@@ -8,6 +8,7 @@ export type ErrorKind =
 	| "InvalidArgument"
 	| "NotImplemented"
 	| "NotAFile"
+	| "InvalidFile"
 	| "FileNotFound"
 	| "PathAlreadyExists"
 	| "AccessDenied"

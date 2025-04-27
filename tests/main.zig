@@ -69,6 +69,7 @@ pub fn runTest(comptime case: []const u8, config: Config) !*cart.Context {
     const context: *cart.Context = try cart.Context.create(allocator, config.runtime);
     defer context.destroy();
     const l = context.state;
+    defer _ = l.gc(.collect);
 
     const code = @embedFile(case);
     const compiled = try cart.luau.compile(
