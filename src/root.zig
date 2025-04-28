@@ -7,7 +7,9 @@ pub const modules = struct {
     pub const ast = @import("modules/ast.zig");
     pub const sys = @import("modules/sys.zig");
     pub const fs = @import("modules/fs.zig");
+    pub const stream = @import("modules/stream.zig");
     pub const pretty = @import("modules/pretty.zig");
+    pub const result = @import("modules/result.zig");
 };
 
 comptime {

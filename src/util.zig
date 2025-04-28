@@ -10,24 +10,32 @@ pub fn tostring(l: *luau.State, index: luau.vm.Index) [:0]const u8 {
     return str;
 }
 
-pub inline fn pushErrorUnion(l: *luau.State, comptime T: type, err_union: T, diagnostics: ?*Diagnostics) void {
+pub fn pushOk(l: *luau.State, comptime T: type, value: T) void {
+    l.createPushTable(.{
+        .ok = true,
+        .value = value,
+    }, null);
+}
+
+pub fn pushError(l: *luau.State, err: []const u8, diagnostics: ?*Diagnostics) void {
     const allocator = l.allocator();
     const joined: []const u8 = if (diagnostics) |diag| blk: {
         break :blk std.mem.join(allocator, "\n", diag.msgs.items) catch "";
     } else "";
     defer allocator.free(joined);
 
+    l.createPushTable(.{
+        .ok = false,
+        .why = @as([]const u8, err),
+        .explanation = joined,
+    }, null);
+}
+
+pub fn pushErrorUnion(l: *luau.State, comptime T: type, err_union: T, diagnostics: ?*Diagnostics) void {
     if (@as(T, err_union)) |good| {
-        l.createPushTable(.{
-            .ok = true,
-            .value = good,
-        }, null);
+        pushOk(l, @TypeOf(good), good);
     } else |bad| {
-        l.createPushTable(.{
-            .ok = false,
-            .why = @as([]const u8, @errorName(bad)),
-            .explanation = joined,
-        }, null);
+        pushError(l, @errorName(bad), diagnostics);
     }
 }
 
@@ -54,19 +62,19 @@ pub const Diagnostics = struct {
         self.fba.reset();
     }
 
-    pub inline fn push(self: *Diagnostics, comptime fmt: []const u8, args: anytype) !void {
+    pub fn push(self: *Diagnostics, comptime fmt: []const u8, args: anytype) !void {
         const allocator = self.fba.allocator();
         const msg = try std.fmt.allocPrint(allocator, fmt, args);
         try self.msgs.append(allocator, msg);
     }
 };
 
-pub inline fn returnErrorUnion(l: *luau.State, comptime T: type, err_union: T, diagnostics: ?*Diagnostics) i32 {
+pub fn returnErrorUnion(l: *luau.State, comptime T: type, err_union: T, diagnostics: ?*Diagnostics) i32 {
     pushErrorUnion(l, T, err_union, diagnostics);
     return 1;
 }
 
-pub inline fn returnValue(l: *luau.State, comptime T: type, value: T) i32 {
+pub fn returnValue(l: *luau.State, comptime T: type, value: T) i32 {
     l.pushVal(value, null);
     return 1;
 }

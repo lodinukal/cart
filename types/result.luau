@@ -1,5 +1,5 @@
 local result = {}
 
-export type Result<T, E> = | { ok: true, value: T } | { ok: false, why: E, explanation: string? }
+export type Result<T, E> = | { read ok: true, read value: T } | { read ok: false, read why: E, read explanation: string? }
 
 return result
