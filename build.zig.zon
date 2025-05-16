@@ -12,7 +12,7 @@
     // In a future version of Zig it will be used for package deduplication.
     .version = "0.1.7",
     .fingerprint = 0xba388b736085eaf,
-    .minimum_zig_version = "0.15.0-dev.375+8f8f37fb0",
+    .minimum_zig_version = "0.15.0-dev.483+837e0f9c3",
 
     // This field is optional.
     // This is currently advisory only; Zig does not yet do anything
@@ -30,8 +30,8 @@
             .hash = "1220cfa2f61bdac1107a04b376f0a64160b474736326c00ba64f53a02062419073df",
         },
         .luau = .{
-            .url = "git+https://github.com/lodinukal/luau.git#2a8c2b263892c70b67cf28365e82fc754298c994",
-            .hash = "luau-0.670.0-SSbB9LruZQAHaxkYBT7hvOoMfgUjj1CZGJB8298_PnlZ",
+            .url = "git+https://github.com/lodinukal/luau.git#1929b32f61c25ec9268710f1f51f3db49e13632b",
+            .hash = "luau-0.670.0-SSbB9DGRZgDGRsPNHnTLLb1_ybd4c-qIypgTJX6fwe2S",
         },
         .mold = .{
             .url = "git+https://github.com/rui314/mold#f7b1920f849cf6bc8120ce60f474e6580bdbdeb4",

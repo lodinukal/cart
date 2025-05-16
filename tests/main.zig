@@ -78,12 +78,30 @@ test "simple_stream.luau" {
     try std.testing.expect(stream.conformsto(l, .at(1), .reader));
     l.pop(1);
     const read_buffer = l.newBuffer(5);
-    const read_result = stream.read(l, .at(-2), .at(-1));
+    const read_result = stream.read(l, .at(1), .at(-1));
     std.testing.expect(read_result == .ok) catch |err| {
         std.log.err("Error reading stream: {s}", .{read_result.err.explanation});
         return err;
     };
     try std.testing.expectEqualSlices(u8, read_buffer.constSlice(), "Hello");
+
+    // test returns a seekable reader
+    try std.testing.expect(stream.isseekable(l, .at(1)) == .ok);
+    const seek_result = stream.seek(l, .at(1), 0);
+    std.testing.expect(seek_result == .ok) catch |err| {
+        std.log.err("Error seeking stream: {s}", .{seek_result.err.explanation});
+        return err;
+    };
+
+    const tell_result = stream.tell(l, .at(1));
+    std.testing.expect(tell_result == .ok) catch |err| {
+        std.log.err("Error telling stream: {s}", .{tell_result.err.explanation});
+        return err;
+    };
+    std.testing.expect(tell_result.ok == 0) catch |err| {
+        std.log.err("Error telling stream: {s}", .{tell_result.err.explanation});
+        return err;
+    };
 }
 
 pub const Config = struct {
@@ -101,18 +119,9 @@ pub const Config = struct {
 pub fn runTest(comptime case: []const u8, config: Config) !*cart.Context {
     const allocator = std.testing.allocator;
     const context: *cart.Context = try cart.Context.create(allocator, config.runtime);
+    errdefer context.destroy();
     const l = context.state;
     defer _ = l.gc(.collect);
-
-    const code = @embedFile(case);
-    const compiled = try cart.luau.compile(
-        allocator,
-        allocator,
-        code,
-        context.compile_options,
-    );
-    defer compiled.deinit(allocator);
-    try std.testing.expect(l.load("@" ++ case, compiled.bytes));
 
     l.pushFunction(testlog, "testlog");
     l.setGlobal("testlog");
@@ -136,6 +145,16 @@ pub fn runTest(comptime case: []const u8, config: Config) !*cart.Context {
         try cart.modules.result.open(context);
     }
 
+    const code = @embedFile(case);
+    const compiled = try cart.luau.compile(
+        allocator,
+        allocator,
+        code,
+        context.compile_options,
+    );
+    defer compiled.deinit(allocator);
+    try std.testing.expect(l.load("@" ++ case, compiled.bytes));
+
     if (l.pcall(0, -1, .none) != .ok) {
         if (l.isString(.at(-1))) {
             const string = l.toLengthString(.at(-1));
@@ -149,7 +168,12 @@ pub fn runTest(comptime case: []const u8, config: Config) !*cart.Context {
         const debug_trace = l.debugTrace();
         if (debug_trace.len > 0)
             std.log.err("{s}", .{debug_trace});
+        cart.util.dumpstack(l);
         return error.TestFailed;
+    }
+
+    while (!context.isDone()) {
+        try context.run();
     }
 
     return context;

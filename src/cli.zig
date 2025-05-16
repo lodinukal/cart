@@ -12,21 +12,29 @@ pub fn main() !void {
     }
 
     const context: *cart.Context = try .create(gpa, .{
-        .extra_aliases = &.{
-            cart.require.preloadedKVComptime("test_caching"),
-        },
+        .extra_aliases = &.{},
     });
     defer context.destroy();
     const l = context.state;
 
-    l.pushLengthString("should be cached!");
-    try context.putCache("test_caching", .at(-1));
+    var args = try std.process.argsWithAllocator(gpa);
+    defer args.deinit();
 
-    const code =
-        \\print("Hello, world!")
-        \\assert(1 == 1)
-        \\local cached = require("@test_caching")
-    ;
+    if (!args.skip()) return;
+
+    const file_name = args.next() orelse return error.NoFileSpecified;
+    const file = try std.fs.cwd().openFile(file_name, .{});
+    defer file.close();
+
+    const code = try file.readToEndAlloc(gpa, std.math.maxInt(usize));
+    defer gpa.free(code);
+
+    try cart.modules.sys.open(context);
+    try cart.modules.fs.open(context);
+    try cart.modules.pretty.open(context);
+    try cart.modules.stream.open(context);
+    try cart.modules.ast.open(context);
+    try cart.modules.result.open(context);
 
     const compiled = try cart.luau.compile(
         gpa,
@@ -36,7 +44,10 @@ pub fn main() !void {
     );
     defer compiled.deinit(gpa);
 
-    try std.testing.expect(l.load("@test.luau", compiled.bytes));
+    const chunk_name = try std.fmt.allocPrintZ(gpa, "@{s}", .{file_name});
+    defer gpa.free(chunk_name);
+
+    try std.testing.expect(l.load(chunk_name, compiled.bytes));
     if (l.pcall(0, 0, .none) != .ok) {
         if (l.isString(.at(-1))) {
             std.debug.print("Error: {s}\n", .{l.toLengthString(.at(-1))});

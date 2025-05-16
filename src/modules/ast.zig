@@ -1,12 +1,15 @@
-pub fn open(context: *cart.Context) !void {
-    if (context.isCached("cart/ast")) return;
+pub fn push(context: *cart.Context) !void {
     const l = context.state;
     l.createPushTable(.{
         .parse = parseHandled,
     }, null);
     l.setReadonly(.at(-1), true);
-    try context.putCache("cart/ast", .at(-1));
-    l.pop(1);
+}
+
+pub fn open(context: *cart.Context) !void {
+    context.state.pushLengthString("@cart/ast");
+    try push(context);
+    luau.require.registermodule(context.state);
 }
 
 pub const Error = error{

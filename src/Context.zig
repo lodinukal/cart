@@ -1,5 +1,7 @@
 // note: CONTEXT IS PINNED IT MUST NOT BE MOVED ONCE .init() IS CALLED
 
+// loop: xev.Loop,
+
 cwd: std.fs.Dir = undefined,
 
 /// extra valid aliases
@@ -87,6 +89,7 @@ pub fn init(self: *@This(), alloc: std.mem.Allocator, config: Config) !void {
     l.setField(.registry, registry_tag);
 
     self.* = .{
+        // .loop = try .init(.{}),
         .cwd = std.fs.cwd(),
         .stringified_luaurc = stringified,
         .allocator = self.allocator,
@@ -103,6 +106,8 @@ pub fn deinit(self: *@This()) void {
     self.require_state.deinit();
     self.state.deinit();
 
+    // self.loop.deinit();
+
     self.* = undefined;
 }
 
@@ -111,46 +116,27 @@ pub fn fromState(state: *luau.State) !*Context {
     return @ptrCast(@alignCast(state.toLightUserdata(.at(-1)) orelse return error.InvalidState));
 }
 
-// Require/Runtime/src/RequireImpl.cpp line 16
-pub const cache_table_key = "_MODULES";
-pub fn isCached(self: *@This(), key: [:0]const u8) bool {
-    const allocator = self.allocator;
-    const adapted_key = require.preloadedCache(allocator, key) catch return false;
-    defer allocator.free(adapted_key);
-    return self.isCachedRaw(adapted_key);
-}
-
-pub fn isCachedRaw(self: *@This(), key: [:0]const u8) bool {
-    const l = self.state;
-    if (l.findTable(.registry, cache_table_key, 0) != null) return false;
-    _ = l.getField(.at(-1), key);
-    const is_cached = !l.isNil(.at(-1));
-    l.pop(2);
-    return is_cached;
-}
-
-pub fn putCache(self: *@This(), key: [:0]const u8, value: luau.vm.Index) !void {
-    const allocator = self.allocator;
-    const adapted_key = try require.preloadedCache(allocator, key);
-    defer allocator.free(adapted_key);
-    try self.putCacheRaw(adapted_key, value);
-}
-
-pub fn putCacheRaw(self: *@This(), key: [:0]const u8, value: luau.vm.Index) !void {
-    const l = self.state;
-    if (l.findTable(.registry, cache_table_key, 1) != null) return;
-    l.pushIndex(value.shiftIfNegative(-1));
-    l.setField(.at(-2), key);
-    l.pop(1);
-}
-
 pub fn setWorkingDirectory(self: *@This(), dir: std.fs.Dir) void {
     self.require_state.cwd = dir;
     self.cwd = dir;
 }
 
+pub fn run(_: *@This()) !void {
+    // try self.loop.run(.no_wait);
+}
+
+pub fn runUntilDone(_: *@This()) !void {
+    // try self.loop.run(.until_done);
+}
+
+pub fn isDone(_: *@This()) bool {
+    // return self.loop.done();
+    return true;
+}
+
 const luau = @import("luau");
 const std = @import("std");
+// const xev = @import("xev");
 
 const Context = @This();
 

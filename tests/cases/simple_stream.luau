@@ -1,17 +1,27 @@
-local result = require("@cart/result")
-local stream = require("@cart/stream")
-
-export type FixedStream = {
+type FixedStream = {
 	pointer: number,
-}
+} & Seekable<FixedStream, FixedStreamError>
 
-export type FixedStreamReader = FixedStream & stream.Reader<FixedStream>
-export type FixedStreamWriter = FixedStream & stream.Writer<FixedStream>
+export type FixedStreamReader = FixedStream & Reader<FixedStream, FixedStreamError>
+export type FixedStreamWriter = FixedStream & Writer<FixedStream, FixedStreamError>
+
+export type FixedStreamError =
+	| "OutOfBounds"
+	| "InvalidReader"
+	| "InvalidWriter"
+	| "InvalidState"
+	| "InvalidArgument"
+	| "NotImplemented"
+	| "NotAFile"
+	| "InvalidFile"
+	| "FileNotFound"
+	| "PathAlreadyExists"
+	| "AccessDenied"
 
 local function fixedstream(backing: buffer, writer: boolean): FixedStream
 	return {
 		pointer = 0,
-		read = function(self: FixedStream, into: buffer): result.Result<number, stream.Error>
+		read = function(self: FixedStream, into: buffer): Result<number, FixedStreamError>
 			if writer then
 				return {
 					ok = false,
@@ -27,7 +37,7 @@ local function fixedstream(backing: buffer, writer: boolean): FixedStream
 				value = len,
 			}
 		end,
-		write = function(self: FixedStream, from: buffer): result.Result<number, stream.Error>
+		write = function(self: FixedStream, from: buffer): Result<number, FixedStreamError>
 			if not writer then
 				return {
 					ok = false,
@@ -43,6 +53,26 @@ local function fixedstream(backing: buffer, writer: boolean): FixedStream
 				value = len,
 			}
 		end,
+		seek = function(self: FixedStream, offset: number): Result<nil, FixedStreamError>
+			if offset < 0 or offset > buffer.len(backing) then
+				return {
+					ok = false,
+					why = "OutOfBounds",
+					explanation = "Offset out of bounds",
+				} :: Result<nil, FixedStreamError>
+			end
+			self.pointer = offset
+			return {
+				ok = true,
+				value = nil,
+			}
+		end,
+		tell = function(self: FixedStream): Result<number, FixedStreamError>
+			return {
+				ok = true,
+				value = self.pointer,
+			}
+		end,
 	}
 end
 
@@ -55,7 +85,6 @@ local function newwriter(backing: buffer): FixedStreamWriter
 end
 
 local _ = newwriter
-local _ = stream
 
 local hello_stream = newreader(buffer.fromstring("Hello, world!"))
 local smol_buffer = buffer.create(5)
@@ -64,6 +93,5 @@ assert(read_count.ok, "Failed to read from stream")
 assert(read_count.value == 5, "Read count mismatch")
 assert(buffer.tostring(smol_buffer) == "Hello", "Buffer content mismatch")
 
--- reset before handing to zig
-hello_stream.pointer = 0
+hello_stream:seek(0)
 return hello_stream

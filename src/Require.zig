@@ -67,8 +67,8 @@ pub const config: luau.require.Configuration = .{
     .to_parent = @ptrCast(&toParent),
     .to_child = @ptrCast(&toChild),
     .is_module_present = @ptrCast(&isModulePresent),
-    .get_contents = @ptrCast(&getContents),
     .get_chunkname = @ptrCast(&getChunkname),
+    .get_loadname = @ptrCast(&getLoadname),
     .get_cache_key = @ptrCast(&getCacheKey),
     .is_config_present = @ptrCast(&isConfigPresent),
     .get_config = @ptrCast(&getConfig),
@@ -400,35 +400,6 @@ fn isModulePresent(
     return stat.kind == .file;
 }
 
-fn getContents(
-    l: *luau.State,
-    context: *State,
-    buffer: [*]u8,
-    buffer_size: usize,
-    size_out: *usize,
-) callconv(.c) luau.require.WriteResult {
-    const allocator = context.fba.allocator();
-
-    const check_path = std.mem.joinZ(allocator, "", &.{
-        context.abs_path orelse "",
-        context.suffix orelse "",
-    }) catch return .failure;
-    defer allocator.free(check_path);
-
-    const lallocator = l.allocator();
-    const whole_file = context.cwd.readFileAlloc(
-        lallocator,
-        check_path,
-        std.math.maxInt(u64),
-    ) catch |err| {
-        std.log.err("Error loading {s}: {}\n", .{ check_path, err });
-        return .failure;
-    };
-    defer lallocator.free(whole_file);
-
-    return write(whole_file, buffer, buffer_size, size_out);
-}
-
 fn getChunkname(
     _: *luau.State,
     context: *State,
@@ -451,6 +422,30 @@ fn getChunkname(
     current_size -= size_out_one;
     size_out.* = buffer_size - current_size;
     return .success;
+}
+
+fn getLoadname(
+    _: *luau.State,
+    context: *State,
+    buffer: [*:0]u8,
+    buffer_size: usize,
+    size_out: *usize,
+) callconv(.c) luau.require.WriteResult {
+    const allocator = context.fba.allocator();
+
+    if (context.is_preloaded) {
+        // will always fail here because we shouldnt be getting a loadname for a preloaded
+        // module
+        return .failure;
+    }
+
+    const check_path = std.mem.joinZ(allocator, "", &.{
+        context.abs_path orelse "",
+        context.suffix orelse "",
+    }) catch return .failure;
+    defer allocator.free(check_path);
+
+    return write(check_path, buffer, buffer_size, size_out);
 }
 
 fn getCacheKey(
@@ -493,12 +488,24 @@ fn getConfig(
 fn load(
     l: *luau.State,
     context: *State,
+    path: [*:0]const u8,
     chunkname: [*:0]const u8,
-    contents: [*:0]const u8,
+    loadname: [*:0]const u8,
 ) callconv(.c) i32 {
     const allocator = context.fba.allocator();
+    const path_str = std.mem.span(path);
     const chunkname_str = std.mem.span(chunkname);
-    const contents_str = std.mem.span(contents);
+    const loadname_str = std.mem.span(loadname);
+
+    const lallocator = l.allocator();
+    const contents_str = context.cwd.readFileAlloc(
+        lallocator,
+        loadname_str,
+        std.math.maxInt(u64),
+    ) catch |err| {
+        return l.errStr("Error loading {s} ({s}) from file: {}", .{ path_str, loadname_str, err });
+    };
+    defer lallocator.free(contents_str);
 
     var success = false;
 
@@ -509,7 +516,6 @@ fn load(
 
     m.sandboxThread();
 
-    const lallocator = l.allocator();
     const bytecode = luau.compile(
         lallocator,
         lallocator,

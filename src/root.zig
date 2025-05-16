@@ -3,6 +3,8 @@ pub const require = @import("require.zig");
 pub const luau = @import("luau");
 pub const util = @import("util.zig");
 
+pub const xev = @import("xev");
+
 pub const modules = struct {
     pub const ast = @import("modules/ast.zig");
     pub const sys = @import("modules/sys.zig");

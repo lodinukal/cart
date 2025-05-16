@@ -1,44 +1,53 @@
-pub fn open(context: *cart.Context) !void {
-    if (context.isCached("cart/fs")) return;
+pub fn push(context: *cart.Context) !void {
     const l = context.state;
-    l.createPushTable(.{
-        .openfile = openFileHandled,
-        .createfile = createFileHandled,
-        .closefile = closeFileHandled,
-        .makepath = makePathHandled,
-        .delete = deleteHandled,
-        .writefile = writeFileHandled,
-        .appendfile = appendFileHandled,
-        .readfile = readFileHandled,
-        .abspath = absPath,
-        .relpath = relPath,
-        .tell = tell,
-        .seek = seekHandled,
-        .seekend = seekEndHandled,
-        .kind = kind,
-        .kindpath = kindPath,
-        .lock = lockHandled,
-        .trylock = tryLockHandled,
-        .unlock = unlockHandled,
-        .symlinkfile = symLinkFileHandled,
-        .symlinkdir = symLinkDirHandled,
-        .hardlinkfile = hardLinkFileHandled,
-        .hardlinkdir = hardLinkDirHandled,
-        .isreadonly = isReadOnlyHandled,
-        .setreadonly = setReadOnlyHandled,
-    }, null);
-    l.setReadonly(.at(-1), true);
-    try context.putCache("cart/fs", .at(-1));
-    l.pop(1);
 
+    // File
     try l.newMetatable(file_metatable);
     l.pushTable(.at(-1), .{
         .__type = file_metatable,
         .__metatable = "This metatable is locked",
         .__tostring = fileToString,
+        // .__index = luau.vm.Index.at(-2),
+        .__index = .{
+            .close = closeFileHandled,
+            .write = writeFileHandled,
+            .append = appendFileHandled,
+            .read = readFileHandled,
+            .readtoend = readToEndHandled,
+            .abspath = absPath,
+            .relpath = relPath,
+            .tell = tell,
+            .seek = seekHandled,
+            .seekend = seekEndHandled,
+            .lock = lockHandled,
+            .trylock = tryLockHandled,
+            .unlock = unlockHandled,
+            .kind = kind,
+            .isreadonly = isReadOnlyHandled,
+            .setreadonly = setReadOnlyHandled,
+        },
     }, null);
     l.setReadonly(.at(-1), true);
     l.pop(1);
+
+    l.createPushTable(.{
+        .openfile = openFileHandled,
+        .createfile = createFileHandled,
+        .makepath = makePathHandled,
+        .delete = deleteHandled,
+        .kindpath = kindPath,
+        .symlinkfile = symLinkFileHandled,
+        .symlinkdir = symLinkDirHandled,
+        .hardlinkfile = hardLinkFileHandled,
+        .hardlinkdir = hardLinkDirHandled,
+    }, null);
+    l.setReadonly(.at(-1), true);
+}
+
+pub fn open(context: *cart.Context) !void {
+    context.state.pushLengthString("@cart/fs");
+    try push(context);
+    luau.require.registermodule(context.state);
 }
 
 pub const Error = error{
@@ -489,31 +498,107 @@ fn readFileHandled(l: *luau.State) i32 {
     diagnostics.init();
     return cart.util.returnErrorUnion(
         l,
-        Error!luau.vm.Index,
+        Error!usize,
         readFile(l, &diagnostics),
         &diagnostics,
     );
 }
 
-fn readFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!luau.vm.Index {
+// const ReadFileEvent = struct {
+//     l: *luau.State,
+//     main_async: xev.Async,
+//     completion: xev.Completion,
+//     read_size: i32 = 0,
+//     file: *File,
+
+//     fn asyncCallback(
+//         ud: ?*ReadFileEvent,
+//         _: *xev.Loop,
+//         _: *xev.Completion,
+//         r: xev.Async.WaitError!void,
+//     ) xev.CallbackAction {
+//         _ = r catch unreachable;
+//         const self = ud.?;
+//         defer self.l.allocator().destroy(self);
+
+//         const new_buffer = self.l.newBuffer(@intCast(self.read_size));
+//         const read = self.file.file.read(new_buffer.mutable) catch unreachable;
+
+//         std.log.err("Read {d} bytes from file `{s}`\n", .{ read, self.file.path });
+//         self.main_async.notify() catch unreachable;
+//         return .disarm;
+//     }
+// };
+
+fn readFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!usize {
+    // const context: *cart.Context = try .fromState(l);
+
     const file: *File = try .to(l, .at(1));
-    const size = l.toIntegerx(.at(2)) orelse {
+    const buffer: luau.vm.Buffer = if (l.type(.at(2)) != .buffer) {
         if (diagnostics) |diag| {
-            diag.push("Invalid read size `{s}`", .{cart.util.tostring(l, .at(2))}) catch {};
+            diag.push("Invalid read argument type `{s}`", .{@tagName(l.type(.at(2)))}) catch {};
         }
         return error.InvalidArgument;
-    };
+    } else l.toBuffer(.at(2));
 
-    const buffer = l.newBuffer(@intCast(size));
+    // const userdata = context.allocator.create(ReadFileEvent) catch {
+    //     if (diagnostics) |diag| {
+    //         diag.push("Failed to allocate read file event", .{}) catch {};
+    //     }
+    //     return error.OutOfMemory;
+    // };
+    // userdata.* = .{
+    //     .l = l,
+    //     .main_async = xev.Async.init() catch |err| {
+    //         if (diagnostics) |diag| {
+    //             diag.push("Failed to init read file event async: {s}", .{@errorName(err)}) catch {};
+    //         }
+    //         return error.Unexpected;
+    //     },
+    //     .completion = undefined,
+    //     .read_size = @intCast(size),
+    //     .file = file,
+    // };
+
+    // userdata.main_async.notify() catch unreachable;
+
+    // userdata.main_async.wait(
+    //     &context.loop,
+    //     &userdata.completion,
+    //     ReadFileEvent,
+    //     userdata,
+    //     ReadFileEvent.asyncCallback,
+    // );
 
     const read = try file.file.read(buffer.mutable);
-    if (read != size) {
-        if (diagnostics) |diag| {
-            diag.push("Failed to read requested size {}, read only {}", .{ size, read }) catch {};
-        }
-        return error.Unexpected;
-    }
+    return read;
+}
 
+fn readToEndHandled(l: *luau.State) i32 {
+    var diagnostics: cart.util.Diagnostics = undefined;
+    diagnostics.init();
+    return cart.util.returnErrorUnion(
+        l,
+        Error!luau.vm.Index,
+        readFileToEnd(l, &diagnostics),
+        &diagnostics,
+    );
+}
+
+fn readFileToEnd(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!luau.vm.Index {
+    const file: *File = try .to(l, .at(1));
+    const allocator = l.allocator();
+
+    const read = file.file.readToEndAlloc(allocator, std.math.maxInt(usize)) catch |err| {
+        if (diagnostics) |diag| {
+            diag.push("Failed to read file `{s}` because {s}", .{ file.path, errorName(err) }) catch {};
+        }
+        return err;
+    };
+    defer allocator.free(read);
+
+    const buffer = l.newBuffer(read.len);
+    @memcpy(buffer.mutable, read);
     return .at(-1);
 }
 
@@ -780,7 +865,7 @@ fn setReadOnly(l: *luau.State) Error!void {
 
 const fs = struct {
     const windows = std.os.windows;
-    const posix = std.os.posix;
+    const posix = std.posix;
     const range_off: windows.LARGE_INTEGER = 0;
     const range_len: windows.LARGE_INTEGER = 1;
 
@@ -1063,6 +1148,7 @@ fn fileToString(l: *luau.State) Error!i32 {
 const std = @import("std");
 const builtin = @import("builtin");
 const cart = @import("../root.zig");
+const xev = @import("xev");
 const luau = cart.luau;
 
 const native_os = builtin.os.tag;

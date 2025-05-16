@@ -1,4 +1,4 @@
-const root = @import("root.zig");
+const cart = @import("cart");
 
 const allocator = std.heap.c_allocator;
 
@@ -31,14 +31,14 @@ pub const Config = extern struct {
 };
 
 /// creates a new cart context; use `cart_destroycontext` to destroy it
-export fn cart_createcontext(config: *const Config, out_context: *?*root.Context) callconv(.c) bool {
+export fn cart_createcontext(config: *const Config, out_context: *?*cart.Context) callconv(.c) bool {
     var extra_aliases_list: std.ArrayListUnmanaged([]const u8) = .empty;
     defer extra_aliases_list.deinit(allocator);
     for (config.extra_aliases.to()) |alias| {
         extra_aliases_list.append(allocator, alias.to()) catch return false;
     }
 
-    out_context.* = root.Context.create(allocator, .{
+    out_context.* = cart.Context.create(allocator, .{
         .read_luaurc = config.luaurc.to(),
         .extra_aliases = extra_aliases_list.items,
         .compile_options = .{
@@ -56,65 +56,44 @@ export fn cart_createcontext(config: *const Config, out_context: *?*root.Context
 }
 
 /// destroys the cart context
-export fn cart_destroycontext(context: *root.Context) callconv(.c) void {
+export fn cart_destroycontext(context: *cart.Context) callconv(.c) void {
     context.destroy();
 }
 
 /// gets the current cart context from the luau state
-export fn cart_contextfromstate(opt_state: ?*root.luau.State) callconv(.c) ?*root.Context {
+export fn cart_contextfromstate(opt_state: ?*cart.luau.State) callconv(.c) ?*cart.Context {
     const state = opt_state orelse return null;
-    const context = root.Context.fromState(state) catch return null;
+    const context = cart.Context.fromState(state) catch return null;
     return context;
 }
 
 /// gets the current luau state from the cart context
-export fn cart_statefromcontext(context: *root.Context) callconv(.c) *root.luau.State {
+export fn cart_statefromcontext(context: *cart.Context) callconv(.c) *cart.luau.State {
     return context.state;
 }
 
-/// checks if the module is cached
-export fn cart_iscached(context: *root.Context, key: [*:0]const u8) callconv(.c) bool {
-    return context.isCached(std.mem.span(key));
-}
-
-export fn cart_iscachedraw(context: *root.Context, key: [*:0]const u8) callconv(.c) bool {
-    return context.isCachedRaw(std.mem.span(key));
-}
-
-/// writes to the module loading cache so it doesnt have to be loaded from file
-export fn cart_putcache(context: *root.Context, key: [*:0]const u8, index: i32) callconv(.c) bool {
-    context.putCache(std.mem.span(key), .at(index)) catch return false;
-    return true;
-}
-
-/// like putcache but does not append the `!/` to the key
-export fn cart_putcacheraw(context: *root.Context, key: [*:0]const u8, index: i32) callconv(.c) bool {
-    context.putCacheRaw(std.mem.span(key), .at(index)) catch return false;
-    return true;
-}
-
 // modules
-export fn cart_openfs(context: *root.Context) callconv(.c) bool {
-    @import("modules/fs.zig").open(context) catch return false;
+export fn cart_openfs(context: *cart.Context) callconv(.c) bool {
+    cart.modules.fs.open(context) catch return false;
     return true;
 }
 
-export fn cart_openpretty(context: *root.Context) callconv(.c) bool {
-    @import("modules/pretty.zig").open(context) catch return false;
+export fn cart_openpretty(context: *cart.Context) callconv(.c) bool {
+    cart.modules.pretty.open(context) catch return false;
     return true;
 }
 
-export fn cart_opensys(context: *root.Context) callconv(.c) bool {
-    @import("modules/sys.zig").open(context) catch return false;
+export fn cart_opensys(context: *cart.Context) callconv(.c) bool {
+    cart.modules.sys.open(context) catch return false;
     return true;
 }
 
-export fn cart_openast(context: *root.Context) callconv(.c) bool {
-    @import("modules/ast.zig").open(context) catch return false;
+export fn cart_openast(context: *cart.Context) callconv(.c) bool {
+    cart.modules.ast.open(context) catch return false;
     return true;
 }
 
-export fn cart_openall(context: *root.Context) callconv(.c) bool {
+export fn cart_openall(context: *cart.Context) callconv(.c) bool {
     if (cart_openfs(context) == false) return false;
     if (cart_openpretty(context) == false) return false;
     if (cart_opensys(context) == false) return false;

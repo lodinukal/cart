@@ -1,5 +1,4 @@
-pub fn open(context: *cart.Context) !void {
-    if (context.isCached("cart/sys")) return;
+pub fn push(context: *cart.Context) !void {
     const l = context.state;
     l.createPushTable(.{
         .os = @as([]const u8, switch (builtin.os.tag) {
@@ -15,8 +14,12 @@ pub fn open(context: *cart.Context) !void {
         }),
     }, null);
     l.setReadonly(.at(-1), true);
-    try context.putCache("cart/sys", .at(-1));
-    l.pop(1);
+}
+
+pub fn open(context: *cart.Context) !void {
+    context.state.pushLengthString("@cart/sys");
+    try push(context);
+    luau.require.registermodule(context.state);
 }
 
 const std = @import("std");

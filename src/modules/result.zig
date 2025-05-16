@@ -1,10 +1,13 @@
-pub fn open(context: *cart.Context) !void {
-    if (context.isCached("cart/result")) return;
+pub fn push(context: *cart.Context) !void {
     const l = context.state;
     l.createPushTable(.{}, null);
     l.setReadonly(.at(-1), true);
-    try context.putCache("cart/result", .at(-1));
-    l.pop(1);
+}
+
+pub fn open(context: *cart.Context) !void {
+    context.state.pushLengthString("@cart/result");
+    try push(context);
+    luau.require.registermodule(context.state);
 }
 
 const std = @import("std");
