@@ -10,14 +10,14 @@ pub fn tostring(l: *luau.State, index: luau.vm.Index) [:0]const u8 {
     return str;
 }
 
-pub fn pushOk(l: *luau.State, comptime T: type, value: T) void {
+pub fn pushOk(l: *luau.State, comptime T: type, value: T, stack_offset: ?i32) void {
     l.createPushTable(.{
         .ok = true,
         .value = value,
-    }, null);
+    }, stack_offset);
 }
 
-pub fn pushError(l: *luau.State, err: []const u8, diagnostics: ?*Diagnostics) void {
+pub fn pushError(l: *luau.State, err: []const u8, diagnostics: ?*Diagnostics, stack_offset: ?i32) void {
     const allocator = l.allocator();
     const joined: []const u8 = if (diagnostics) |diag| blk: {
         break :blk std.mem.join(allocator, "\n", diag.msgs.items) catch "";
@@ -28,14 +28,14 @@ pub fn pushError(l: *luau.State, err: []const u8, diagnostics: ?*Diagnostics) vo
         .ok = false,
         .why = @as([]const u8, err),
         .explanation = joined,
-    }, null);
+    }, stack_offset);
 }
 
 pub fn pushErrorUnion(l: *luau.State, comptime T: type, err_union: T, diagnostics: ?*Diagnostics) void {
     if (@as(T, err_union)) |good| {
-        pushOk(l, @TypeOf(good), good);
+        pushOk(l, @TypeOf(good), good, null);
     } else |bad| {
-        pushError(l, @errorName(bad), diagnostics);
+        pushError(l, @errorName(bad), diagnostics, null);
     }
 }
 
@@ -121,6 +121,74 @@ pub const Ref = struct {
         _ = self.l.rawGeti(.registry, self.index);
     }
 };
+
+pub fn MarshalResult(comptime Config: type) type {
+    const T: type = @field(Config, "Type");
+    const unmarshal: fn (l: *luau.State, at: luau.vm.Index) ?T = @field(Config, "unmarshal");
+    return union(enum) {
+        ok: T,
+        err: struct {
+            why: []const u8,
+            explanation: []const u8,
+        },
+
+        pub fn from(l: *luau.State, at: luau.vm.Index) !@This() {
+            // on top of stack should be a result type, check if its a table
+            if (l.type(at) != .table) {
+                return error.Invalid;
+            }
+            // has fields, ok + value, or ok + why + explanation
+            if (l.getField(at, "ok") != .boolean) {
+                return error.Invalid;
+            }
+            const ok = l.toBoolean(.at(-1));
+            l.pop(1);
+            if (ok) {
+                // read value
+                _ = l.getField(at, "value");
+                if (unmarshal(l, .at(-1))) |value| {
+                    l.pop(1);
+                    return .{ .ok = value };
+                }
+                return error.Invalid;
+            } else {
+                // read why + explanation
+                if (l.getField(.at(-1), "why") != .string) {
+                    return error.Invalid;
+                }
+                const why = l.toLengthString(.at(-1));
+                l.pop(1);
+                if (l.getField(.at(-1), "explanation") != .string) {
+                    return error.Invalid;
+                }
+                const explanation = l.toLengthString(.at(-1));
+                l.pop(1);
+                return .{ .err = .{
+                    .why = why,
+                    .explanation = explanation,
+                } };
+            }
+        }
+    };
+}
+
+pub const UsizeResult = MarshalResult(struct {
+    pub const Type = usize;
+    pub fn unmarshal(l: *luau.State, at: luau.vm.Index) ?usize {
+        if (l.type(at) != .number) {
+            return null;
+        }
+        const n = l.toIntegerx(at) orelse return null;
+        return @intCast(n);
+    }
+});
+
+pub const VoidResult = MarshalResult(struct {
+    pub const Type = void;
+    pub fn unmarshal(_: *luau.State, _: luau.vm.Index) ?void {
+        return {};
+    }
+});
 
 const std = @import("std");
 const cart = @import("root.zig");

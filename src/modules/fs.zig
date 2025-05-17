@@ -166,8 +166,6 @@ pub fn errorName(err: Error) []const u8 {
     };
 }
 
-pub const ErrorPayload = []const u8;
-
 pub const file_metatable = "cart/fs/file";
 
 pub const File = struct {
@@ -440,13 +438,17 @@ fn writeFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!void {
             },
         }
     };
+    var max_bytes = contents.len;
+    if (l.toIntegerx(.at(3))) |param_max_bytes| if (param_max_bytes < max_bytes) {
+        max_bytes = @intCast(param_max_bytes);
+    };
     file.file.seekTo(0) catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to seek file `{s}` to beginning because {s}", .{ file.path, errorName(err) }) catch {};
         }
         return err;
     };
-    file.file.writeAll(contents) catch |err| {
+    file.file.writeAll(contents[0..max_bytes]) catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to write file `{s}` because {s}", .{ file.path, errorName(err) }) catch {};
         }
@@ -479,13 +481,17 @@ fn appendFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!void {
             },
         }
     };
+    var max_bytes = contents.len;
+    if (l.toIntegerx(.at(3))) |param_max_bytes| if (param_max_bytes < max_bytes) {
+        max_bytes = @intCast(param_max_bytes);
+    };
     file.file.seekFromEnd(0) catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to seek file `{s}` from end because {s}", .{ file.path, errorName(err) }) catch {};
         }
         return err;
     };
-    file.file.writeAll(contents) catch |err| {
+    file.file.writeAll(contents[0..max_bytes]) catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to write file `{s}` because {s}", .{ file.path, errorName(err) }) catch {};
         }

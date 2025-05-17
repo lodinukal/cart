@@ -68,8 +68,8 @@ export fn cart_contextfromstate(opt_state: ?*cart.luau.State) callconv(.c) ?*car
 }
 
 /// gets the current luau state from the cart context
-export fn cart_statefromcontext(context: *cart.Context) callconv(.c) *cart.luau.State {
-    return context.state;
+export fn cart_statefromcontext(context: ?*cart.Context) callconv(.c) ?*cart.luau.State {
+    return (context orelse return null).state;
 }
 
 // modules
@@ -78,8 +78,23 @@ export fn cart_openfs(context: *cart.Context) callconv(.c) bool {
     return true;
 }
 
+export fn cart_opennet(context: *cart.Context) callconv(.c) bool {
+    cart.modules.net.open(context) catch return false;
+    return true;
+}
+
+export fn cart_openresult(context: *cart.Context) callconv(.c) bool {
+    cart.modules.result.open(context) catch return false;
+    return true;
+}
+
 export fn cart_openpretty(context: *cart.Context) callconv(.c) bool {
     cart.modules.pretty.open(context) catch return false;
+    return true;
+}
+
+export fn cart_openstream(context: *cart.Context) callconv(.c) bool {
+    cart.modules.stream.open(context) catch return false;
     return true;
 }
 
@@ -95,7 +110,10 @@ export fn cart_openast(context: *cart.Context) callconv(.c) bool {
 
 export fn cart_openall(context: *cart.Context) callconv(.c) bool {
     if (cart_openfs(context) == false) return false;
+    if (cart_opennet(context) == false) return false;
+    if (cart_openresult(context) == false) return false;
     if (cart_openpretty(context) == false) return false;
+    if (cart_openstream(context) == false) return false;
     if (cart_opensys(context) == false) return false;
     if (cart_openast(context) == false) return false;
     return true;

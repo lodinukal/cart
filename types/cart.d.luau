@@ -4,19 +4,19 @@ export type Result<T, E> = | { read ok: true, read value: T } | { read ok: false
 -- streams
 export type Reader<T, Err> = {
 	--- tries to read buffer.len(into) bytes from the stream into the buffer and returns the number of bytes read or an error message
-	read: (self: T, into: buffer) -> Result<number, Err>,
+	read: (self: Reader<T, Err>, into: buffer) -> Result<number, Err>,
 }
 
 export type Writer<T, Err> = {
 	--- tries to write buffer.len(from) bytes from the buffer into the stream and returns the number of bytes written or an error message
-	write: (self: T, from: buffer) -> Result<number, Err>,
+	write: (self: Writer<T, Err>, from: buffer, max_bytes: number?) -> Result<number, Err>,
 }
 
 export type Seekable<T, Err> = {
 	--- gets the position of the stream
-	tell: (self: T) -> Result<number, Err>,
+	tell: (self: Seekable<T, Err>) -> Result<number, Err>,
 	--- tries to seek the stream to the given position and returns the new position or an error message
-	seek: (self: T, offset: number) -> Result<nil, Err>,
+	seek: (self: Seekable<T, Err>, offset: number) -> Result<nil, Err>,
 }
 
 -- fs
@@ -89,8 +89,8 @@ export type FileKind = "file" | "directory" | "symlink" | "namedpipe" | "blockde
 
 declare extern type File with
     function close(self): boolean
-    function write(self, data: buffer | string): Result<nil, FileError>
-    function append(self, data: buffer | string): Result<nil, FileError>
+    function write(self, data: buffer | string, max_bytes: number?): Result<nil, FileError>
+    function append(self, data: buffer | string, max_bytes: number?): Result<nil, FileError>
     function read(self, data: buffer): Result<number, FileError>
     function readtoend(self): Result<buffer, FileError>
 	function abspath(self): string
@@ -104,4 +104,46 @@ declare extern type File with
     function kind(self): FileKind
     function setreadonly(self, readonly: boolean): Result<nil, FileError>
     function isreadonly(self): boolean
+	function reader(self): Reader<File, FileError> & Seekable<File, FileError>
+	function writer(self): Writer<File, FileError> & Seekable<File, FileError>
+end
+
+-- net
+export type NetError = 
+	| "InvalidState"
+	| "InvalidArgument"
+	| "NotImplemented"
+	| "NotAFile"
+	| "InvalidFile"
+	| "FileNotFound"
+	| "PathAlreadyExists"
+	| "AccessDenied"
+
+declare extern type Socket with
+	function close(self): boolean
+	function bind(self, endpoint: string): Result<nil, NetError>
+	function settimeouts(self, read: number?, write: number?): Result<nil, NetError>
+	--- only supported for udp sockets on IPv4
+	function setbroadcast(self, enable: boolean): Result<nil, NetError>
+	--- address family must match the socket family
+	function connect(self, endpoint: string): Result<nil, NetError>
+	--- call :accept() to get another socket which accepts tcp connections
+	function listen(self): Result<nil, NetError>
+	--- waits until a connection is made and returns a new socket,
+	--- need to call :listen() before calling this
+	function accept(self): Result<Socket, NetError>
+	--- on UDP will send full packet, on TCP will append to the stream
+	function send(self, buffer: buffer, length: number?): Result<number, NetError>
+	--- nonblocking peek, does not modify the stream
+	function peek(self, buffer: buffer): Result<number, NetError>
+	--- blocks until data is available
+	function receive(self, buffer: buffer): Result<{length: number, sender: string?}, NetError>
+	--- like :send() but only for udp sockets, returns the number of bytes sent
+	function sendto(self, endpoint: string, buffer: buffer): Result<number, NetError>
+	function enableportreuse(self, enable: boolean): Result<nil, NetError>
+	function getlocalendpoint(self): Result<string, NetError>
+	function getremoteendpoint(self): Result<string, NetError>
+	function joinmulticastgroup(self, interface: string, group: string): Result<nil, NetError>
+	function reader(self): Reader<Socket, NetError>
+	function writer(self): Writer<Socket, NetError>
 end

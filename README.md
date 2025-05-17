@@ -1,27 +1,31 @@
 # CART
 
+this is the rewrite branch
+
 a `cross application run time` for luau
 
 TODO:
 
-- [ ] @cart/net implementation
-  - [x] fetch
-  - [ ] websocket
-  - [ ] server
-- [x] @cart/web implementation
-- [x] @cart/process implementation
-  - [x] basic process spawning
-  - [x] asyncify :wait()
-  - [x] io redirection
-- [ ] @cart/json implementation
-- [ ] Add more examples
-- [ ] Automate js package building (currently a batch script with copy)
-- [ ] Build js package instead of publishing ts files to npm
-- [ ] Add tests
+# stage 1 (simple runtime capabilities for a mvp)
+- [ ] make function wrapper able to work with yielding functions
+- [ ] asyncify cart/net (sockets)
+- [ ] asyncify cart/fs (file system)
+- [ ] create cart/process (process spawning)
+- [ ] create cart/json (json parsing)
+- [ ] create cart/crypto (crypto functions)
+- [ ] port back cart/web (js functions and wasm ffi)
+- [ ] create cart/ffi (ffi functions)
+- [ ] create cart/http (http functions)
+- [ ] create cart/websocket (websocket functions)
+
+# stage 2 (extra libraries that would be nice to have)
+- [ ] cart/vendor/raylib (raylib bindings)
+- [ ] cart/gui (rmgui framework)
+- [ ] cart/gui/plot (matplotlib like graphing library)
 
 ## Building
 
-Currently using zig version `0.14.0-dev.2571`
+Currently using zig version `0.15.0-dev.2571`
 
 ```bash
 zig build run -- examples/test.luau

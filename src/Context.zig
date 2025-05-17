@@ -113,6 +113,7 @@ pub fn deinit(self: *@This()) void {
 
 pub fn fromState(state: *luau.State) !*Context {
     _ = state.getField(.registry, registry_tag);
+    defer state.pop(1);
     return @ptrCast(@alignCast(state.toLightUserdata(.at(-1)) orelse return error.InvalidState));
 }
 

@@ -11,6 +11,15 @@ pub fn main() !void {
         if (is_debug) _ = debug_allocator.deinit();
     }
 
+    var old_cp: c_uint = 0;
+    if (native_os == .windows) {
+        old_cp = std.os.windows.kernel32.GetConsoleOutputCP();
+        _ = std.os.windows.kernel32.SetConsoleOutputCP(65001);
+    }
+    defer if (native_os == .windows) {
+        _ = std.os.windows.kernel32.SetConsoleOutputCP(old_cp);
+    };
+
     const context: *cart.Context = try .create(gpa, .{
         .extra_aliases = &.{},
     });
@@ -31,6 +40,7 @@ pub fn main() !void {
 
     try cart.modules.sys.open(context);
     try cart.modules.fs.open(context);
+    try cart.modules.net.open(context);
     try cart.modules.pretty.open(context);
     try cart.modules.stream.open(context);
     try cart.modules.ast.open(context);

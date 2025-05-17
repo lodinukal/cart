@@ -5,7 +5,6 @@ const std = @import("std");
 // runner.
 pub fn build(b: *std.Build) !void {
     var wasm_cpu_set: std.Target.Cpu.Feature.Set = .empty;
-    wasm_cpu_set.addFeature(@intFromEnum(std.Target.wasm.Feature.atomics));
     wasm_cpu_set.addFeatureSet(std.Target.wasm.cpu.bleeding_edge.features);
     const wasm_target = b.resolveTargetQuery(.{
         .abi = .musl,
@@ -72,6 +71,13 @@ pub fn build(b: *std.Build) !void {
     });
     cart_mod.addImport("luau", luau_dep.module("luau"));
 
+    const network_module = b.createModule(.{
+        .root_source_file = b.path("vendor/network/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    cart_mod.addImport("network", network_module);
+
     if (has_ffi) {
         // dynlib
         const ffi_dep = b.dependency("ffi", .{
@@ -85,7 +91,7 @@ pub fn build(b: *std.Build) !void {
             cart_mod.linkLibrary(ffi_dep.artifact("ffi"));
         }
     }
-    
+
     // Now, we will create a static library based on the module we created above.
     // This creates a `std.Build.Step.Compile`, which is the build step responsible
     // for actually invoking the compiler.

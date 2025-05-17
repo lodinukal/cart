@@ -31,6 +31,21 @@ test "simple_fs.luau" {
     context.destroy();
 }
 
+test "simple_net.luau" {
+    const context = try runTest("cases/simple_fs.luau", .{
+        .enabled_modules = .{
+            .fs = true,
+            .net = true,
+        },
+        .runtime = .{
+            .extra_aliases = &.{
+                cart.require.preloadedKVComptime("cart"),
+            },
+        },
+    });
+    context.destroy();
+}
+
 test "fuzz_fs.luau" {
     const context = try runTest("cases/fuzz_fs.luau", .{
         .enabled_modules = .{
@@ -110,6 +125,7 @@ pub const Config = struct {
         ast: bool = false,
         sys: bool = false,
         fs: bool = false,
+        net: bool = false,
         stream: bool = true,
         pretty: bool = true,
         result: bool = true,
@@ -131,6 +147,9 @@ pub fn runTest(comptime case: []const u8, config: Config) !*cart.Context {
     }
     if (config.enabled_modules.fs) {
         try cart.modules.fs.open(context);
+    }
+    if (config.enabled_modules.net) {
+        try cart.modules.net.open(context);
     }
     if (config.enabled_modules.pretty) {
         try cart.modules.pretty.open(context);

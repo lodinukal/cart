@@ -1,6 +1,6 @@
 type FixedStream = {
 	pointer: number,
-} & Seekable<FixedStream, FixedStreamError>
+}
 
 export type FixedStreamReader = FixedStream & Reader<FixedStream, FixedStreamError>
 export type FixedStreamWriter = FixedStream & Writer<FixedStream, FixedStreamError>
@@ -37,7 +37,7 @@ local function fixedstream(backing: buffer, writer: boolean): FixedStream
 				value = len,
 			}
 		end,
-		write = function(self: FixedStream, from: buffer): Result<number, FixedStreamError>
+		write = function(self: FixedStream, from: buffer, max_bytes: number?): Result<number, FixedStreamError>
 			if not writer then
 				return {
 					ok = false,
@@ -45,7 +45,8 @@ local function fixedstream(backing: buffer, writer: boolean): FixedStream
 					explanation = "Cannot write to a reader",
 				}
 			end
-			local len = buffer.len(from)
+			-- local len = buffer.len(from)
+			local len = if max_bytes then math.min(max_bytes, buffer.len(from)) else buffer.len(from)
 			buffer.copy(backing, self.pointer, from, 0, len)
 			self.pointer += len
 			return {
@@ -76,12 +77,12 @@ local function fixedstream(backing: buffer, writer: boolean): FixedStream
 	}
 end
 
-local function newreader(backing: buffer): FixedStreamReader
-	return fixedstream(backing, false) :: FixedStreamReader
+local function newreader(backing: buffer): FixedStreamReader & Seekable<FixedStream, FixedStreamError>
+	return fixedstream(backing, false) :: FixedStreamReader & Seekable<FixedStream, FixedStreamError>
 end
 
-local function newwriter(backing: buffer): FixedStreamWriter
-	return fixedstream(backing, true) :: FixedStreamWriter
+local function newwriter(backing: buffer): FixedStreamWriter & Seekable<FixedStream, FixedStreamError>
+	return fixedstream(backing, true) :: FixedStreamWriter & Seekable<FixedStream, FixedStreamError>
 end
 
 local _ = newwriter
