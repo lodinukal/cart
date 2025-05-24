@@ -21,6 +21,7 @@ pub const State = struct {
     fba: std.heap.FixedBufferAllocator = .init(&.{}),
     compile_options: luau.CompileOptions = .{},
     stringified_luaurc: []const u8 = "",
+    extra_aliases: std.StringArrayHashMapUnmanaged(?[]const u8) = .empty,
 
     cwd: std.fs.Dir = undefined,
 
@@ -38,12 +39,14 @@ pub const State = struct {
         buffer: []u8,
         compile_options: luau.CompileOptions,
         luaurc: []const u8,
+        extra_aliases: std.StringArrayHashMapUnmanaged(?[]const u8),
     ) !State {
         return .{
             .fba = .init(buffer),
             .compile_options = compile_options,
             .stringified_luaurc = luaurc,
             .cwd = cwd,
+            .extra_aliases = extra_aliases,
         };
     }
 
@@ -71,7 +74,8 @@ pub const config: luau.require.Configuration = .{
     .get_loadname = @ptrCast(&getLoadname),
     .get_cache_key = @ptrCast(&getCacheKey),
     .is_config_present = @ptrCast(&isConfigPresent),
-    .get_config = @ptrCast(&getConfig),
+    .get_alias = @ptrCast(&getAlias),
+    .get_config = null, //@ptrCast(&getConfig),
     .load = @ptrCast(&load),
 };
 
@@ -475,6 +479,21 @@ const default_config =
     \\{}
 ;
 
+fn getAlias(
+    _: *luau.State,
+    context: *State,
+    alias: [*:0]const u8,
+    buffer: [*:0]u8,
+    buffer_size: usize,
+    size_out: *usize,
+) callconv(.c) luau.require.WriteResult {
+    const alias_str = std.mem.span(alias);
+
+    const found = context.extra_aliases.get(alias_str) orelse return .failure;
+    const found_adapted = found orelse "!";
+    return write(found_adapted, buffer, buffer_size, size_out);
+}
+
 fn getConfig(
     _: *luau.State,
     context: *State,
@@ -503,7 +522,7 @@ fn load(
         loadname_str,
         std.math.maxInt(u64),
     ) catch |err| {
-        return l.errStr("Error loading {s} ({s}) from file: {}", .{ path_str, loadname_str, err });
+        return l.errFmt("Error loading {s} ({s}) from file: {}", .{ path_str, loadname_str, err });
     };
     defer lallocator.free(contents_str);
 

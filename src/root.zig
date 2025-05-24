@@ -13,6 +13,7 @@ pub const modules = struct {
     pub const result = @import("modules/result.zig");
     pub const stream = @import("modules/stream.zig");
     pub const sys = @import("modules/sys.zig");
+    pub const task = @import("modules/task.zig");
 };
 
 pub const UserdataTag = enum(u8) {

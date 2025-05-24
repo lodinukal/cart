@@ -20,6 +20,7 @@ pub fn main() !void {
         _ = std.os.windows.kernel32.SetConsoleOutputCP(old_cp);
     };
 
+    cart.luau.vm.enableYieldableContinuations(true);
     const context: *cart.Context = try .create(gpa, .{
         .extra_aliases = &.{},
     });
@@ -45,6 +46,7 @@ pub fn main() !void {
     try cart.modules.stream.open(context);
     try cart.modules.ast.open(context);
     try cart.modules.result.open(context);
+    try cart.modules.task.open(context);
 
     const compiled = try cart.luau.compile(
         gpa,
@@ -58,13 +60,60 @@ pub fn main() !void {
     defer gpa.free(chunk_name);
 
     try std.testing.expect(l.load(chunk_name, compiled.bytes));
-    if (l.pcall(0, 0, .none) != .ok) {
-        if (l.isString(.at(-1))) {
-            std.debug.print("Error: {s}\n", .{l.toLengthString(.at(-1))});
-        } else {
-            std.debug.print("Unknown error\n", .{});
-        }
+    const res = l.@"resume"(null, 0);
+    switch (res) {
+        .suspended => {},
+        .running => {},
+        else => {
+            err(l);
+        },
     }
+
+    // var c: xev.Completion = undefined;
+    // const timer = try xev.Timer.init();
+    // timer.run(&context.loop, &c, 1000, void, null, timerCallback);
+
+    while (!context.loop.done()) {
+        // try context.run();
+        try context.loop.run(.once);
+
+        const status = l.status();
+        switch (status) {
+            .yield => continue,
+            .ok => continue,
+            else => {},
+        }
+
+        // error
+        err(l);
+    }
+    // _ = l.gc(.collect);
+
+    // if (l.pcall(0, 0, .none) != .ok) {
+    //     if (l.isString(.at(-1))) {
+    //         std.debug.print("Error: {s}\n", .{l.toLengthString(.at(-1))});
+    //     } else {
+    //         std.debug.print("Unknown error\n", .{});
+    //     }
+    // }
+}
+
+fn err(l: *cart.luau.State) noreturn {
+    const err_string = l.toLengthString(.at(-1));
+    std.debug.print("Error: {s}\n", .{err_string});
+    std.debug.print("stacktrace:\n{s}\n", .{l.debugTrace()});
+    std.process.exit(1);
+}
+
+fn timerCallback(
+    _: ?*void,
+    _: *xev.Loop,
+    _: *xev.Completion,
+    result: xev.Timer.RunError!void,
+) xev.CallbackAction {
+    _ = result catch unreachable;
+    std.debug.print("Timer expired\n", .{});
+    return .disarm;
 }
 
 const std = @import("std");
@@ -72,3 +121,5 @@ const builtin = @import("builtin");
 const native_os = builtin.os.tag;
 
 const cart = @import("cart");
+
+const xev = cart.xev;

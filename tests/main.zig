@@ -8,11 +8,7 @@ test "get_os.luau" {
         .enabled_modules = .{
             .sys = true,
         },
-        .runtime = .{
-            .extra_aliases = &.{
-                cart.require.preloadedKVComptime("cart"),
-            },
-        },
+        .runtime = .{},
     });
     context.destroy();
 }
@@ -22,11 +18,7 @@ test "simple_fs.luau" {
         .enabled_modules = .{
             .fs = true,
         },
-        .runtime = .{
-            .extra_aliases = &.{
-                cart.require.preloadedKVComptime("cart"),
-            },
-        },
+        .runtime = .{},
     });
     context.destroy();
 }
@@ -37,11 +29,7 @@ test "simple_net.luau" {
             .fs = true,
             .net = true,
         },
-        .runtime = .{
-            .extra_aliases = &.{
-                cart.require.preloadedKVComptime("cart"),
-            },
-        },
+        .runtime = .{},
     });
     context.destroy();
 }
@@ -51,11 +39,7 @@ test "fuzz_fs.luau" {
         .enabled_modules = .{
             .fs = true,
         },
-        .runtime = .{
-            .extra_aliases = &.{
-                cart.require.preloadedKVComptime("cart"),
-            },
-        },
+        .runtime = .{},
     });
     context.destroy();
 }
@@ -65,11 +49,7 @@ test "simple_ast.luau" {
         .enabled_modules = .{
             .ast = true,
         },
-        .runtime = .{
-            .extra_aliases = &.{
-                cart.require.preloadedKVComptime("cart"),
-            },
-        },
+        .runtime = .{},
     });
     context.destroy();
 }
@@ -80,11 +60,7 @@ test "simple_stream.luau" {
         .enabled_modules = .{
             .fs = true,
         },
-        .runtime = .{
-            .extra_aliases = &.{
-                cart.require.preloadedKVComptime("cart"),
-            },
-        },
+        .runtime = .{},
     });
     defer context.destroy();
     const l = context.state;
@@ -129,6 +105,7 @@ pub const Config = struct {
         stream: bool = true,
         pretty: bool = true,
         result: bool = true,
+        task: bool = true,
     } = .{},
 };
 
@@ -139,7 +116,8 @@ pub fn runTest(comptime case: []const u8, config: Config) !*cart.Context {
     const l = context.state;
     defer _ = l.gc(.collect);
 
-    l.pushFunction(testlog, "testlog");
+    // l.pushFunction(testlog, "testlog");
+    l.pushClosurek(.init(testlog, "testlog"), 0);
     l.setGlobal("testlog");
 
     if (config.enabled_modules.sys) {
@@ -163,6 +141,9 @@ pub fn runTest(comptime case: []const u8, config: Config) !*cart.Context {
     if (config.enabled_modules.result) {
         try cart.modules.result.open(context);
     }
+    if (config.enabled_modules.task) {
+        try cart.modules.task.open(context);
+    }
 
     const code = @embedFile(case);
     const compiled = try cart.luau.compile(
@@ -174,28 +155,38 @@ pub fn runTest(comptime case: []const u8, config: Config) !*cart.Context {
     defer compiled.deinit(allocator);
     try std.testing.expect(l.load("@" ++ case, compiled.bytes));
 
-    if (l.pcall(0, -1, .none) != .ok) {
-        if (l.isString(.at(-1))) {
-            const string = l.toLengthString(.at(-1));
-            if (std.mem.eql(u8, string, "SKIPTEST")) {
-                return error.SkipZigTest;
-            }
-            std.log.err("{s}", .{string});
-        } else {
-            std.log.err("Unknown error", .{});
-        }
-        const debug_trace = l.debugTrace();
-        if (debug_trace.len > 0)
-            std.log.err("{s}", .{debug_trace});
-        cart.util.dumpstack(l);
-        return error.TestFailed;
+    const res = l.@"resume"(null, 0);
+    switch (res) {
+        .suspended => {},
+        .running => {},
+        else => {
+            testErr(l);
+        },
     }
 
-    while (!context.isDone()) {
-        try context.run();
+    while (!context.loop.done()) {
+        // try context.run();
+        try context.loop.run(.once);
+
+        const status = l.status();
+        switch (status) {
+            .yield => continue,
+            .ok => continue,
+            else => {},
+        }
+
+        // error
+        testErr(l);
     }
 
     return context;
+}
+
+fn testErr(l: *cart.luau.State) noreturn {
+    const err_string = l.toLengthString(.at(-1));
+    std.debug.print("Error: {s}\n", .{err_string});
+    std.debug.print("stacktrace:\n{s}\n", .{l.debugTrace()});
+    std.process.exit(1);
 }
 
 fn testlog(l: *cart.luau.State) void {

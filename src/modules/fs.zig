@@ -10,15 +10,18 @@ pub fn push(context: *cart.Context) !void {
         // .__index = luau.vm.Index.at(-2),
         .__index = .{
             .close = closeFileHandled,
-            .write = writeFileHandled,
-            .append = appendFileHandled,
-            .read = readFileHandled,
+            .write = luau.vm.ClosureK.withContinuation(writeFileHandled, writeFileCont, "write"),
+            .pwrite = luau.vm.ClosureK.withContinuation(pwriteFileHandled, writeFileCont, "pwrite"),
+            .read = luau.vm.ClosureK.withContinuation(readFileHandled, readFileCont, "read"),
+            .pread = luau.vm.ClosureK.withContinuation(preadFileHandled, readFileCont, "pread"),
+            // .write = writeFileHandled,
+            // .append = appendFileHandled,
+            // .read = readFileHandled,
             .readtoend = readToEndHandled,
             .abspath = absPath,
             .relpath = relPath,
             .tell = tell,
             .seek = seekHandled,
-            .seekend = seekEndHandled,
             .lock = lockHandled,
             .trylock = tryLockHandled,
             .unlock = unlockHandled,
@@ -40,6 +43,10 @@ pub fn push(context: *cart.Context) !void {
         .symlinkdir = symLinkDirHandled,
         .hardlinkfile = hardLinkFileHandled,
         .hardlinkdir = hardLinkDirHandled,
+
+        .stdin = getStdin,
+        .stdout = getStdout,
+        .stderr = getStderr,
     }, null);
     l.setReadonly(.at(-1), true);
 }
@@ -103,9 +110,12 @@ pub const Error = error{
     NotSameFileSystem,
     PermissionDenied,
     MessageTooBig,
+    EOF,
     OutOfMemory,
     Unexpected,
 };
+
+pub const YieldError = Error || error{YieldLuau1};
 
 pub fn errorName(err: Error) []const u8 {
     return switch (err) {
@@ -163,6 +173,7 @@ pub fn errorName(err: Error) []const u8 {
         error.NotSameFileSystem => return "not same filesystem",
         error.PermissionDenied => return "permission denied",
         error.MessageTooBig => return "message too big",
+        error.EOF => return "EOF",
     };
 }
 
@@ -226,51 +237,117 @@ pub const File = struct {
         mode: std.fs.File.OpenMode = .read_only,
         lock: std.fs.File.Lock = .none,
         create: bool = true,
+        follow_symlinks: bool = true,
     };
 
+    pub const Path = union(enum) {
+        const_relative: []const u8,
+        relative: [:0]u8,
+        stdin,
+        stdout,
+        stderr,
+
+        pub fn rel(path: []const u8) Path {
+            return .{ .const_relative = path };
+        }
+
+        pub fn format(
+            self: @This(),
+            comptime _: []const u8,
+            _: std.fmt.FormatOptions,
+            writer: anytype,
+        ) !void {
+            try switch (self) {
+                .relative => |r| writer.writeAll(r),
+                .stdin => writer.writeAll("stdin"),
+                .stdout => writer.writeAll("stdout"),
+                .stderr => writer.writeAll("stderr"),
+                .const_relative => |r| writer.writeAll(r),
+            };
+        }
+    };
+
+    context: *cart.Context,
+    completion: xev.Completion = undefined,
+
+    ref: union(enum) { valid: luau.vm.Ref, dtor: luau.vm.Ref, dead },
+
     allocator: std.mem.Allocator,
-    valid: bool = true,
-    file: std.fs.File,
+    file: xev.File,
     /// storing path because zig fs discourages using realpath
-    path: [:0]u8,
+    path: Path,
 
     current_lock: std.fs.File.Lock = .none,
 
-    pub fn push(l: *luau.State, file: std.fs.File, path: []const u8) !*File {
+    pub inline fn stdFile(self: File) std.fs.File {
+        return .{ .handle = self.file.fd };
+    }
+
+    pub fn push(l: *luau.State, context: *cart.Context, file: std.fs.File, path: Path) !*File {
         const allocator = l.allocator();
         const new_file: *File = @alignCast(@ptrCast(l.newUserdataDtor(
             @sizeOf(File),
             @ptrCast(&fileDtor),
         ) orelse
             return error.OutOfMemory));
+        const ref = l.ref(.at(-1));
+        errdefer l.unref(ref);
         _ = l.getMetatableRegistry(file_metatable);
         l.setMetatable(.at(-2));
         var buf: [std.fs.max_path_bytes]u8 = undefined;
-        const canoncial_path = try allocator.dupeZ(
-            u8,
-            try std.fs.realpath(path, buf[0..]),
-        );
         new_file.* = .{
-            .file = file,
+            .context = context,
+            .ref = .{ .valid = ref },
+            .file = try .init(file),
             .allocator = allocator,
-            .valid = true,
-            .path = canoncial_path,
+            .path = path: {
+                switch (path) {
+                    .const_relative => |rel| {
+                        break :path .{ .relative = try allocator.dupeZ(
+                            u8,
+                            try std.fs.realpath(rel, buf[0..]),
+                        ) };
+                    },
+                    .relative => @panic("relative path not supported as push input"),
+                    else => |other| break :path other,
+                }
+            },
         };
         return new_file;
     }
 
     pub fn to(l: *luau.State, at: luau.vm.Index) !*File {
         const file: *File = @alignCast(@ptrCast(l.checkUserdata(at, file_metatable) orelse return error.NotAFile));
-        if (!file.valid) return error.InvalidFile;
+        if (file.ref != .valid) return error.InvalidFile;
         return file;
     }
 };
 
 fn fileDtor(file: *File) callconv(.c) void {
-    if (file.valid) {
-        file.file.close();
-        file.allocator.free(file.path);
-        file.valid = false;
+    if (file.ref == .valid) {
+        file.ref = .{ .dtor = file.ref.valid };
+        switch (file.path) {
+            .relative => |rel| file.allocator.free(rel),
+            else => {},
+        }
+        if (file.context.exiting) {
+            // close synchronously
+            file.stdFile().close();
+            return;
+        }
+        file.file.close(&file.context.loop, &file.completion, File, file, (struct {
+            fn callback(
+                ud: ?*File,
+                _: *xev.Loop,
+                _: *xev.Completion,
+                _: xev.File,
+                _: xev.CloseError!void,
+            ) xev.CallbackAction {
+                ud.?.context.state.unref(ud.?.ref.dtor);
+                ud.?.ref = .dead;
+                return .disarm;
+            }
+        }).callback);
     }
 }
 
@@ -295,14 +372,19 @@ fn openFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!luau.vm.
         .lock = flags.lock,
     };
 
-    const opened = context.cwd.openFile(path, std_flags) catch |err| blk: {
+    const opened = fs.openFile(
+        context.cwd,
+        path,
+        std_flags,
+        flags.follow_symlinks,
+    ) catch |err| blk: {
         if (err == error.FileNotFound and flags.create) {
             const create_flags: std.fs.File.CreateFlags = .{
                 .lock = flags.lock,
                 .exclusive = false,
                 .read = true,
             };
-            const created = context.cwd.createFile(path, create_flags) catch |create_err| {
+            const created = fs.createFile(context.cwd, path, create_flags) catch |create_err| {
                 if (diagnostics) |diag| {
                     diag.push("Failed to create file `{s}` because {s}", .{ path, errorName(create_err) }) catch {};
                 }
@@ -316,7 +398,7 @@ fn openFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!luau.vm.
         return err;
     };
 
-    const file = try File.push(l, opened, path);
+    const file = try File.push(l, context, opened, .rel(path));
     file.current_lock = flags.lock;
     return .at(-1);
 }
@@ -344,14 +426,14 @@ fn createFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!luau.v
         .truncate = flags.truncate,
     };
 
-    const created = context.cwd.createFile(path, std_flags) catch |err| {
+    const created = fs.createFile(context.cwd, path, std_flags) catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to create file `{s}` because {s}", .{ path, errorName(err) }) catch {};
         }
         return err;
     };
 
-    const file = try File.push(l, created, path);
+    const file = try File.push(l, context, created, .rel(path));
     file.current_lock = flags.lock;
     return .at(-1);
 }
@@ -413,18 +495,58 @@ fn delete(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!void {
     };
 }
 
+const WriteFileAsync = struct {
+    allocator: std.mem.Allocator,
+    completion: xev.Completion,
+
+    context: *cart.Context,
+    l: *luau.State,
+    /// a bittt hacky but its just that iocp doesnt actually set the file pointer with write
+    set_file_pointer: ?usize = null,
+
+    diagnostics: cart.util.Diagnostics = .{},
+
+    result: xev.WriteError!usize = undefined,
+    buffer_ref: luau.vm.Ref = .no,
+
+    pub fn callback(
+        opt_self: ?*WriteFileAsync,
+        _: *xev.Loop,
+        _: *xev.Completion,
+        f: xev.File,
+        _: xev.WriteBuffer,
+        r: xev.WriteError!usize,
+    ) xev.CallbackAction {
+        const self = opt_self orelse unreachable;
+        self.result = r;
+        const file: std.fs.File = .{ .handle = f.fd };
+        if (self.set_file_pointer) |set_pos| {
+            _ = file.seekTo(set_pos) catch @panic("Failed to set file pointer");
+        }
+        _ = r catch |err| {
+            self.diagnostics.push("Failed to write file because {s}", .{errorName(err)}) catch {};
+        };
+        self.l.pushLightUserdata(@ptrCast(self));
+        _ = self.l.@"resume"(null, 1);
+        return .disarm;
+    }
+};
+
 fn writeFileHandled(l: *luau.State) i32 {
     var diagnostics: cart.util.Diagnostics = undefined;
     diagnostics.init();
     return cart.util.returnErrorUnion(
         l,
-        Error!void,
+        YieldError!void,
         writeFile(l, &diagnostics),
         &diagnostics,
     );
 }
 
-fn writeFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!void {
+fn writeFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) YieldError!void {
+    const context: *cart.Context = try .fromState(l);
+    const allocator = l.allocator();
+
     const file: *File = try .to(l, .at(1));
     const contents: []const u8 = blk: {
         switch (l.type(.at(2))) {
@@ -442,37 +564,64 @@ fn writeFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!void {
     if (l.toIntegerx(.at(3))) |param_max_bytes| if (param_max_bytes < max_bytes) {
         max_bytes = @intCast(param_max_bytes);
     };
-    file.file.seekTo(0) catch |err| {
+
+    const current_position = file.stdFile().getPos() catch |err| {
         if (diagnostics) |diag| {
-            diag.push("Failed to seek file `{s}` to beginning because {s}", .{ file.path, errorName(err) }) catch {};
+            diag.push("Failed to get file position because {s}", .{errorName(err)}) catch {};
         }
         return err;
     };
-    file.file.writeAll(contents[0..max_bytes]) catch |err| {
+    const new_position = current_position + max_bytes;
+
+    const future = allocator.create(WriteFileAsync) catch |err| {
         if (diagnostics) |diag| {
-            diag.push("Failed to write file `{s}` because {s}", .{ file.path, errorName(err) }) catch {};
+            diag.push("Failed to create future because {s}", .{errorName(err)}) catch {};
         }
         return err;
     };
+
+    future.* = .{
+        .allocator = allocator,
+        .completion = undefined,
+        .context = context,
+        .l = l,
+        .set_file_pointer = new_position,
+    };
+    future.diagnostics.init();
+
+    file.file.write(
+        &context.loop,
+        &future.completion,
+        .{ .slice = contents[0..max_bytes] },
+        WriteFileAsync,
+        future,
+        &WriteFileAsync.callback,
+    );
+
+    return error.YieldLuau1;
 }
 
-fn appendFileHandled(l: *luau.State) i32 {
+fn pwriteFileHandled(l: *luau.State) i32 {
     var diagnostics: cart.util.Diagnostics = undefined;
     diagnostics.init();
     return cart.util.returnErrorUnion(
         l,
-        Error!void,
-        appendFile(l, &diagnostics),
+        YieldError!void,
+        pwriteFile(l, &diagnostics),
         &diagnostics,
     );
 }
 
-fn appendFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!void {
+fn pwriteFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) YieldError!void {
+    const context: *cart.Context = try .fromState(l);
+    const allocator = l.allocator();
+
     const file: *File = try .to(l, .at(1));
+    const offset = l.toIntegerx(.at(2)) orelse return error.InvalidArgument;
     const contents: []const u8 = blk: {
-        switch (l.type(.at(2))) {
-            .string => break :blk l.toLengthString(.at(2)),
-            .buffer => break :blk l.toBuffer(.at(2)).constSlice(),
+        switch (l.type(.at(3))) {
+            .string => break :blk l.toLengthString(.at(3)),
+            .buffer => break :blk l.toBuffer(.at(3)).constSlice(),
             else => {
                 if (diagnostics) |diag| {
                     diag.push("Invalid write argument type `{s}`", .{@tagName(l.type(.at(1)))}) catch {};
@@ -482,62 +631,95 @@ fn appendFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!void {
         }
     };
     var max_bytes = contents.len;
-    if (l.toIntegerx(.at(3))) |param_max_bytes| if (param_max_bytes < max_bytes) {
+    if (l.toIntegerx(.at(4))) |param_max_bytes| if (param_max_bytes < max_bytes) {
         max_bytes = @intCast(param_max_bytes);
     };
-    file.file.seekFromEnd(0) catch |err| {
+
+    const future = allocator.create(WriteFileAsync) catch |err| {
         if (diagnostics) |diag| {
-            diag.push("Failed to seek file `{s}` from end because {s}", .{ file.path, errorName(err) }) catch {};
+            diag.push("Failed to create future because {s}", .{errorName(err)}) catch {};
         }
         return err;
     };
-    file.file.writeAll(contents[0..max_bytes]) catch |err| {
-        if (diagnostics) |diag| {
-            diag.push("Failed to write file `{s}` because {s}", .{ file.path, errorName(err) }) catch {};
-        }
-        return err;
+
+    future.* = .{
+        .allocator = allocator,
+        .completion = undefined,
+        .context = context,
+        .l = l,
     };
+    future.diagnostics.init();
+
+    file.file.pwrite(
+        &context.loop,
+        &future.completion,
+        .{ .slice = contents[0..max_bytes] },
+        @intCast(offset),
+        WriteFileAsync,
+        future,
+        &WriteFileAsync.callback,
+    );
+
+    return error.YieldLuau1;
 }
+
+fn writeFileCont(l: *luau.State, status: luau.vm.Status) callconv(.c) i32 {
+    const future: *WriteFileAsync = @alignCast(@ptrCast(l.toLightUserdata(.at(-1)) orelse return 0));
+    defer future.allocator.destroy(future);
+    _ = status;
+    if (future.result) |_| {
+        cart.util.pushOk(l, void, {}, 0);
+    } else |bad| {
+        cart.util.pushError(l, @errorName(bad), &future.diagnostics, null);
+    }
+    return 1;
+}
+
+const ReadFileAsync = struct {
+    allocator: std.mem.Allocator,
+    completion: xev.Completion,
+
+    context: *cart.Context,
+    l: *luau.State,
+
+    diagnostics: cart.util.Diagnostics = .{},
+
+    result: xev.ReadError!usize = undefined,
+    buffer_ref: luau.vm.Ref = .no,
+
+    pub fn callback(
+        opt_self: ?*ReadFileAsync,
+        _: *xev.Loop,
+        _: *xev.Completion,
+        _: xev.File,
+        _: xev.ReadBuffer,
+        r: xev.ReadError!usize,
+    ) xev.CallbackAction {
+        const self = opt_self orelse unreachable;
+        self.result = r;
+        _ = r catch |err| {
+            self.diagnostics.push("Failed to read file because {s}", .{errorName(err)}) catch {};
+        };
+        self.l.pushLightUserdata(@ptrCast(self));
+        _ = self.l.@"resume"(null, 1);
+        return .disarm;
+    }
+};
 
 fn readFileHandled(l: *luau.State) i32 {
     var diagnostics: cart.util.Diagnostics = undefined;
     diagnostics.init();
     return cart.util.returnErrorUnion(
         l,
-        Error!usize,
+        YieldError!usize,
         readFile(l, &diagnostics),
         &diagnostics,
     );
 }
 
-// const ReadFileEvent = struct {
-//     l: *luau.State,
-//     main_async: xev.Async,
-//     completion: xev.Completion,
-//     read_size: i32 = 0,
-//     file: *File,
-
-//     fn asyncCallback(
-//         ud: ?*ReadFileEvent,
-//         _: *xev.Loop,
-//         _: *xev.Completion,
-//         r: xev.Async.WaitError!void,
-//     ) xev.CallbackAction {
-//         _ = r catch unreachable;
-//         const self = ud.?;
-//         defer self.l.allocator().destroy(self);
-
-//         const new_buffer = self.l.newBuffer(@intCast(self.read_size));
-//         const read = self.file.file.read(new_buffer.mutable) catch unreachable;
-
-//         std.log.err("Read {d} bytes from file `{s}`\n", .{ read, self.file.path });
-//         self.main_async.notify() catch unreachable;
-//         return .disarm;
-//     }
-// };
-
-fn readFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!usize {
-    // const context: *cart.Context = try .fromState(l);
+fn readFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) YieldError!usize {
+    const context: *cart.Context = try .fromState(l);
+    const allocator = l.allocator();
 
     const file: *File = try .to(l, .at(1));
     const buffer: luau.vm.Buffer = if (l.type(.at(2)) != .buffer) {
@@ -547,37 +729,91 @@ fn readFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!usize {
         return error.InvalidArgument;
     } else l.toBuffer(.at(2));
 
-    // const userdata = context.allocator.create(ReadFileEvent) catch {
-    //     if (diagnostics) |diag| {
-    //         diag.push("Failed to allocate read file event", .{}) catch {};
-    //     }
-    //     return error.OutOfMemory;
-    // };
-    // userdata.* = .{
-    //     .l = l,
-    //     .main_async = xev.Async.init() catch |err| {
-    //         if (diagnostics) |diag| {
-    //             diag.push("Failed to init read file event async: {s}", .{@errorName(err)}) catch {};
-    //         }
-    //         return error.Unexpected;
-    //     },
-    //     .completion = undefined,
-    //     .read_size = @intCast(size),
-    //     .file = file,
-    // };
+    const future = allocator.create(ReadFileAsync) catch |err| {
+        if (diagnostics) |diag| {
+            diag.push("Failed to create future because {s}", .{errorName(err)}) catch {};
+        }
+        return err;
+    };
 
-    // userdata.main_async.notify() catch unreachable;
+    future.* = .{
+        .allocator = allocator,
+        .completion = undefined,
+        .context = context,
+        .l = l,
+    };
+    future.diagnostics.init();
 
-    // userdata.main_async.wait(
-    //     &context.loop,
-    //     &userdata.completion,
-    //     ReadFileEvent,
-    //     userdata,
-    //     ReadFileEvent.asyncCallback,
-    // );
+    file.file.read(
+        &context.loop,
+        &future.completion,
+        .{ .slice = buffer.mutable },
+        ReadFileAsync,
+        future,
+        &ReadFileAsync.callback,
+    );
 
-    const read = try file.file.read(buffer.mutable);
-    return read;
+    return error.YieldLuau1;
+}
+
+fn preadFileHandled(l: *luau.State) i32 {
+    var diagnostics: cart.util.Diagnostics = undefined;
+    diagnostics.init();
+    return cart.util.returnErrorUnion(
+        l,
+        YieldError!usize,
+        preadFile(l, &diagnostics),
+        &diagnostics,
+    );
+}
+
+fn preadFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) YieldError!usize {
+    const context: *cart.Context = try .fromState(l);
+    const allocator = l.allocator();
+
+    const file: *File = try .to(l, .at(1));
+    const offset = l.toIntegerx(.at(2)) orelse return error.InvalidArgument;
+    const buffer: luau.vm.Buffer = if (l.type(.at(3)) != .buffer) {
+        if (diagnostics) |diag| {
+            diag.push("Invalid read argument type `{s}`", .{@tagName(l.type(.at(3)))}) catch {};
+        }
+        return error.InvalidArgument;
+    } else l.toBuffer(.at(3));
+
+    const future = allocator.create(ReadFileAsync) catch |err| {
+        if (diagnostics) |diag| {
+            diag.push("Failed to create future because {s}", .{errorName(err)}) catch {};
+        }
+        return err;
+    };
+
+    future.* = .{
+        .allocator = allocator,
+        .completion = undefined,
+        .context = context,
+        .l = l,
+    };
+    future.diagnostics.init();
+
+    file.file.pread(
+        &context.loop,
+        &future.completion,
+        .{ .slice = buffer.mutable },
+        @intCast(offset),
+        ReadFileAsync,
+        future,
+        &ReadFileAsync.callback,
+    );
+
+    return error.YieldLuau1;
+}
+
+fn readFileCont(l: *luau.State, status: luau.vm.Status) callconv(.c) i32 {
+    const future: *ReadFileAsync = @alignCast(@ptrCast(l.toLightUserdata(.at(-1)) orelse return 0));
+    defer future.allocator.destroy(future);
+    _ = status;
+    cart.util.pushErrorUnion(l, xev.ReadError!usize, future.result, &future.diagnostics);
+    return 1;
 }
 
 fn readToEndHandled(l: *luau.State) i32 {
@@ -595,7 +831,7 @@ fn readFileToEnd(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!lua
     const file: *File = try .to(l, .at(1));
     const allocator = l.allocator();
 
-    const read = file.file.readToEndAlloc(allocator, std.math.maxInt(usize)) catch |err| {
+    const read = file.stdFile().readToEndAlloc(allocator, std.math.maxInt(usize)) catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to read file `{s}` because {s}", .{ file.path, errorName(err) }) catch {};
         }
@@ -610,7 +846,13 @@ fn readFileToEnd(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!lua
 
 fn absPath(l: *luau.State) !i32 {
     const file: *File = try .to(l, .at(1));
-    const path = file.path;
+    const path = switch (file.path) {
+        .relative => |rel| rel,
+        else => |other| {
+            l.pushLengthString(@tagName(other));
+            return 1;
+        },
+    };
     l.pushLengthString(path);
     return 1;
 }
@@ -619,7 +861,13 @@ fn relPath(l: *luau.State) !i32 {
     const context: *cart.Context = try .fromState(l);
 
     const file: *File = try .to(l, .at(1));
-    const path = file.path;
+    const path = switch (file.path) {
+        .relative => |rel| rel,
+        else => |other| {
+            l.pushLengthString(@tagName(other));
+            return 1;
+        },
+    };
 
     const allocator = l.allocator();
 
@@ -635,7 +883,7 @@ fn relPath(l: *luau.State) !i32 {
 
 fn tell(l: *luau.State) !i32 {
     const file: *File = try .to(l, .at(1));
-    const pos = try file.file.getPos();
+    const pos = try file.stdFile().getPos();
     l.pushNumber(@floatFromInt(pos));
     return 1;
 }
@@ -654,29 +902,16 @@ fn seekHandled(l: *luau.State) i32 {
 fn seek(l: *luau.State) Error!void {
     const file: *File = try .to(l, .at(1));
     const pos = l.toIntegerx(.at(2)) orelse return error.InvalidArgument;
-    file.file.seekTo(@intCast(pos)) catch |err| return err;
-}
-
-fn seekEndHandled(l: *luau.State) i32 {
-    var diagnostics: cart.util.Diagnostics = undefined;
-    diagnostics.init();
-    return cart.util.returnErrorUnion(
-        l,
-        Error!void,
-        seekEnd(l),
-        &diagnostics,
-    );
-}
-
-fn seekEnd(l: *luau.State) Error!void {
-    const file: *File = try .to(l, .at(1));
-    const pos = l.toIntegerx(.at(2)) orelse return error.InvalidArgument;
-    file.file.seekFromEnd(@intCast(pos)) catch |err| return err;
+    if (pos >= 0) {
+        try file.stdFile().seekTo(@intCast(pos));
+    } else {
+        try file.stdFile().seekFromEnd(@intCast(-pos - 1));
+    }
 }
 
 fn kind(l: *luau.State) !i32 {
     const file: *File = try .to(l, .at(1));
-    const stat = try file.file.stat();
+    const stat = try file.stdFile().stat();
     l.pushLengthString(@tagName(File.Kind.fromStd(stat.kind)));
     return 1;
 }
@@ -716,7 +951,7 @@ fn lockFn(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!void {
         }
         return error.InvalidArgument;
     };
-    fs.lock(file.file, lock) catch |err| {
+    fs.lock(file.stdFile(), lock) catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to lock file `{s}` because {s}", .{ file.path, errorName(err) }) catch {};
         }
@@ -744,7 +979,7 @@ fn tryLock(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) Error!bool {
         }
         return error.InvalidArgument;
     };
-    const locked = fs.tryLock(file.file, lock) catch |err| {
+    const locked = fs.tryLock(file.stdFile(), lock) catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to lock file `{s}` because {s}", .{ file.path, errorName(err) }) catch {};
         }
@@ -764,7 +999,7 @@ fn unlockHandled(l: *luau.State) i32 {
 
 fn unlock(l: *luau.State) Error!void {
     const file: *File = try .to(l, .at(1));
-    fs.unlock(file.file);
+    fs.unlock(file.stdFile());
 }
 
 fn symLinkFileHandled(l: *luau.State) i32 {
@@ -845,7 +1080,7 @@ fn isReadOnlyHandled(l: *luau.State) i32 {
 
 fn isReadOnly(l: *luau.State) !bool {
     const file: *File = try .to(l, .at(1));
-    const meta = try file.file.metadata();
+    const meta = try file.stdFile().metadata();
     return meta.permissions().readOnly();
 }
 
@@ -866,7 +1101,28 @@ fn setReadOnly(l: *luau.State) Error!void {
     const read_only = l.toBoolean(.at(2));
     var permissions: std.fs.File.Permissions = std.mem.zeroes(std.fs.File.Permissions);
     permissions.setReadOnly(read_only);
-    try file.file.setPermissions(permissions);
+    try file.stdFile().setPermissions(permissions);
+}
+
+fn getStdin(l: *luau.State) !i32 {
+    const context: *cart.Context = try .fromState(l);
+    const file = std.io.getStdIn();
+    _ = try File.push(l, context, file, .stdin);
+    return 1;
+}
+
+fn getStdout(l: *luau.State) !i32 {
+    const context: *cart.Context = try .fromState(l);
+    const file = std.io.getStdOut();
+    _ = try File.push(l, context, file, .stdout);
+    return 1;
+}
+
+fn getStderr(l: *luau.State) !i32 {
+    const context: *cart.Context = try .fromState(l);
+    const file = std.io.getStdErr();
+    _ = try File.push(l, context, file, .stderr);
+    return 1;
 }
 
 const fs = struct {
@@ -1017,6 +1273,88 @@ const fs = struct {
         lpExistingFileName: [*:0]const u16,
         lpSecurityAttributes: ?*windows.SECURITY_ATTRIBUTES,
     ) windows.BOOL;
+
+    /// need this so that we open overlapped files on Windows
+    pub fn openFile(self: std.fs.Dir, sub_path: []const u8, flags: std.fs.File.OpenFlags, follow_symlinks: bool) std.fs.File.OpenError!std.fs.File {
+        if (comptime native_os == .windows) {
+            const path_w = try windows.sliceToPrefixedFileW(self.fd, sub_path);
+            const sub_path_w = path_w.span();
+            const file: std.fs.File = .{
+                .handle = try windows_ext.OpenFile(sub_path_w, .{
+                    .dir = self.fd,
+                    .access_mask = std.os.windows.SYNCHRONIZE |
+                        (if (flags.isRead()) @as(u32, std.os.windows.GENERIC_READ) else 0) |
+                        (if (flags.isWrite()) @as(u32, std.os.windows.GENERIC_WRITE) else 0),
+                    .creation = std.os.windows.FILE_OPEN,
+                    .follow_symlinks = follow_symlinks,
+                }),
+            };
+            errdefer file.close();
+            var io: std.os.windows.IO_STATUS_BLOCK = undefined;
+            const exclusive = switch (flags.lock) {
+                .none => return file,
+                .shared => false,
+                .exclusive => true,
+            };
+            try std.os.windows.LockFile(
+                file.handle,
+                null,
+                null,
+                null,
+                &io,
+                &range_off,
+                &range_len,
+                null,
+                @intFromBool(flags.lock_nonblocking),
+                @intFromBool(exclusive),
+            );
+            return file;
+        }
+        return self.openFile(sub_path, flags);
+    }
+
+    /// similar to above openFile, but creating files
+    pub fn createFile(self: std.fs.Dir, sub_path: []const u8, flags: std.fs.File.CreateFlags) std.fs.File.OpenError!std.fs.File {
+        if (comptime native_os == .windows) {
+            const path_w = try windows.sliceToPrefixedFileW(self.fd, sub_path);
+            const sub_path_w = path_w.span();
+            const read_flag = if (flags.read) @as(u32, std.os.windows.GENERIC_READ) else 0;
+            const file: std.fs.File = .{
+                .handle = try windows_ext.OpenFile(sub_path_w, .{
+                    .dir = self.fd,
+                    .access_mask = std.os.windows.SYNCHRONIZE | std.os.windows.GENERIC_WRITE | read_flag,
+                    .creation = if (flags.exclusive)
+                        @as(u32, std.os.windows.FILE_CREATE)
+                    else if (flags.truncate)
+                        @as(u32, std.os.windows.FILE_OVERWRITE_IF)
+                    else
+                        @as(u32, std.os.windows.FILE_OPEN_IF),
+                    .follow_symlinks = false,
+                }),
+            };
+            errdefer file.close();
+            var io: std.os.windows.IO_STATUS_BLOCK = undefined;
+            const exclusive = switch (flags.lock) {
+                .none => return file,
+                .shared => false,
+                .exclusive => true,
+            };
+            try std.os.windows.LockFile(
+                file.handle,
+                null,
+                null,
+                null,
+                &io,
+                &range_off,
+                &range_len,
+                null,
+                @intFromBool(flags.lock_nonblocking),
+                @intFromBool(exclusive),
+            );
+            return file;
+        }
+        return self.createFile(sub_path, flags);
+    }
 };
 
 fn parseOpenFlags(l: *luau.State, at: luau.vm.Index, diagnostics: ?*cart.util.Diagnostics) !File.OpenFlags {
@@ -1069,10 +1407,21 @@ fn parseOpenFlags(l: *luau.State, at: luau.vm.Index, diagnostics: ?*cart.util.Di
     const create = if (field_create_type == .nil) true else l.toBoolean(.at(-1));
     l.pop(1);
 
+    const field_follow_symlinks_type = l.getField(at.shiftIfNegative(-1), "follow_symlinks");
+    if (field_follow_symlinks_type != .boolean and field_follow_symlinks_type != .nil) {
+        if (diagnostics) |diag| {
+            diag.push("Invalid follow_symlinks `{s}`", .{cart.util.tostring(l, .at(-1))}) catch {};
+        }
+        return error.InvalidArgument;
+    }
+    const follow_symlinks = if (field_follow_symlinks_type == .nil) true else l.toBoolean(.at(-1));
+    l.pop(1);
+
     return .{
         .mode = mode.toStd(),
         .lock = lock,
         .create = create,
+        .follow_symlinks = follow_symlinks,
     };
 }
 
@@ -1150,6 +1499,98 @@ fn fileToString(l: *luau.State) Error!i32 {
     try l.pushFmtString("cart/file({s})", .{path});
     return 1;
 }
+
+const windows_ext = struct {
+    /// modified to not block with symlink resolution and thus to allow for async file opening
+    pub fn OpenFile(sub_path_w: []const u16, options: std.os.windows.OpenFileOptions) std.os.windows.OpenError!std.os.windows.HANDLE {
+        if (std.mem.eql(u16, sub_path_w, &[_]u16{'.'}) and options.filter == .file_only) {
+            return error.IsDir;
+        }
+        if (std.mem.eql(u16, sub_path_w, &[_]u16{ '.', '.' }) and options.filter == .file_only) {
+            return error.IsDir;
+        }
+
+        var result: std.os.windows.HANDLE = undefined;
+
+        const path_len_bytes = std.math.cast(u16, sub_path_w.len * 2) orelse return error.NameTooLong;
+        var nt_name = std.os.windows.UNICODE_STRING{
+            .Length = path_len_bytes,
+            .MaximumLength = path_len_bytes,
+            .Buffer = @constCast(sub_path_w.ptr),
+        };
+        var attr = std.os.windows.OBJECT_ATTRIBUTES{
+            .Length = @sizeOf(std.os.windows.OBJECT_ATTRIBUTES),
+            .RootDirectory = if (std.fs.path.isAbsoluteWindowsWTF16(sub_path_w)) null else options.dir,
+            .Attributes = if (options.sa) |ptr| blk: { // Note we do not use OBJ_CASE_INSENSITIVE here.
+                const inherit: std.os.windows.ULONG = if (ptr.bInheritHandle == std.os.windows.TRUE) std.os.windows.OBJ_INHERIT else 0;
+                break :blk inherit;
+            } else 0,
+            .ObjectName = &nt_name,
+            .SecurityDescriptor = if (options.sa) |ptr| ptr.lpSecurityDescriptor else null,
+            .SecurityQualityOfService = null,
+        };
+        var io: std.os.windows.IO_STATUS_BLOCK = undefined;
+        const blocking_flag: std.os.windows.ULONG = 0; //std.os.windows.FILE_SYNCHRONOUS_IO_NONALERT;
+        const file_or_dir_flag: std.os.windows.ULONG = switch (options.filter) {
+            .file_only => std.os.windows.FILE_NON_DIRECTORY_FILE,
+            .dir_only => std.os.windows.FILE_DIRECTORY_FILE,
+            .any => 0,
+        };
+        // If we're not following symlinks, we need to ensure we don't pass in any synchronization flags such as FILE_SYNCHRONOUS_IO_NONALERT.
+        const flags: std.os.windows.ULONG = if (options.follow_symlinks)
+            file_or_dir_flag | blocking_flag
+        else
+            file_or_dir_flag | std.os.windows.FILE_OPEN_REPARSE_POINT;
+
+        while (true) {
+            const rc = std.os.windows.ntdll.NtCreateFile(
+                &result,
+                options.access_mask,
+                &attr,
+                &io,
+                null,
+                std.os.windows.FILE_ATTRIBUTE_NORMAL,
+                options.share_access,
+                options.creation,
+                flags,
+                null,
+                0,
+            );
+            switch (rc) {
+                .SUCCESS => return result,
+                .OBJECT_NAME_INVALID => return error.BadPathName,
+                .OBJECT_NAME_NOT_FOUND => return error.FileNotFound,
+                .OBJECT_PATH_NOT_FOUND => return error.FileNotFound,
+                .BAD_NETWORK_PATH => return error.NetworkNotFound, // \\server was not found
+                .BAD_NETWORK_NAME => return error.NetworkNotFound, // \\server was found but \\server\share wasn't
+                .NO_MEDIA_IN_DEVICE => return error.NoDevice,
+                .INVALID_PARAMETER => unreachable,
+                .SHARING_VIOLATION => return error.AccessDenied,
+                .ACCESS_DENIED => return error.AccessDenied,
+                .PIPE_BUSY => return error.PipeBusy,
+                .PIPE_NOT_AVAILABLE => return error.NoDevice,
+                .OBJECT_PATH_SYNTAX_BAD => unreachable,
+                .OBJECT_NAME_COLLISION => return error.PathAlreadyExists,
+                .FILE_IS_A_DIRECTORY => return error.IsDir,
+                .NOT_A_DIRECTORY => return error.NotDir,
+                .USER_MAPPED_FILE => return error.AccessDenied,
+                .INVALID_HANDLE => unreachable,
+                .DELETE_PENDING => {
+                    // This error means that there *was* a file in this location on
+                    // the file system, but it was deleted. However, the OS is not
+                    // finished with the deletion operation, and so this CreateFile
+                    // call has failed. There is not really a sane way to handle
+                    // this other than retrying the creation after the OS finishes
+                    // the deletion.
+                    std.time.sleep(std.time.ns_per_ms);
+                    continue;
+                },
+                .VIRUS_INFECTED, .VIRUS_DELETED => return error.AntivirusInterference,
+                else => return std.os.windows.unexpectedStatus(rc),
+            }
+        }
+    }
+};
 
 const std = @import("std");
 const builtin = @import("builtin");

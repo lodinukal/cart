@@ -89,15 +89,25 @@ export type FileKind = "file" | "directory" | "symlink" | "namedpipe" | "blockde
 
 declare extern type File with
     function close(self): boolean
-    function write(self, data: buffer | string, max_bytes: number?): Result<nil, FileError>
-    function append(self, data: buffer | string, max_bytes: number?): Result<nil, FileError>
-    function read(self, data: buffer): Result<number, FileError>
-    function readtoend(self): Result<buffer, FileError>
+	--- will move the file pointer
+	function write(self, data: buffer | string, max_bytes: number?): Result<nil, FileError>
+	--- will not move the file pointer
+	function pwrite(self, offset: number, data: buffer | string, max_bytes: number?): Result<nil, FileError>
+	--- will move the file pointer
+	function read(self, data: buffer): Result<number, FileError>
+	--- will not move the file pointer
+	function pread(self, offset: number, data: buffer): Result<number, FileError>
+    -- function write(self, data: buffer | string, max_bytes: number?): Result<nil, FileError>
+    -- function append(self, data: buffer | string, max_bytes: number?): Result<nil, FileError>
+    -- function read(self, data: buffer): Result<number, FileError>
+	--- NOTE: this is currently DOES NOT WORK as iocp will not allow synchronous reads through a async file handle
+    -- function readtoend(self): Result<buffer, FileError>
 	function abspath(self): string
     function relpath(self): string
     function tell(self): number
+	--- using a negative offset will seek from the end of the file
     function seek(self, offset: number): Result<nil, FileError>
-    function seekend(self, offset: number): Result<nil, FileError>
+    -- function seekend(self, offset: number): Result<nil, FileError>
     function lock(self, lock: FileLock): Result<nil, FileError>
     function trylock(self, lock: FileLock): Result<boolean, FileError>
     function unlock(self): nil
@@ -109,41 +119,71 @@ declare extern type File with
 end
 
 -- net
-export type NetError = 
-	| "InvalidState"
-	| "InvalidArgument"
-	| "NotImplemented"
-	| "NotAFile"
-	| "InvalidFile"
-	| "FileNotFound"
-	| "PathAlreadyExists"
+export type NetError =
+	| "AddressFamilyNotSupported"
+	| "ProcessFdQuotaExceeded"
+	| "SystemResources"
+	| "ProtocolNotSupported"
+	| "Canceled"
+	| "Unexpected"
+	| "BrokenPipe"
+	| "ConnectionResetByPeer"
+	| "OperationAborted"
+	| "LockViolation"
 	| "AccessDenied"
+	| "NotOpenForReading"
+	| "EOF"
+	| "NetworkSubsystemFailed"
+	| "NotOpenForWriting"
+	| "OutOfMemory"
+	| "Overflow"
+	| "InvalidCharacter"
+	| "PermissionDenied"
+	| "FileNotFound"
+	| "NameTooLong"
+	| "NotDir"
+	| "SymLinkLoop"
+	| "SystemFdQuotaExceeded"
+	| "NoDevice"
+	| "InvalidArgument"
+	| "InvalidState"
+	| "NotImplemented"
+	| "ReadOnlyFileSystem"
+	| "NotATCPStream"
+	| "InvalidTCPStream"
+	| "InvalidIPAddressFormat"
+	| "ProtocolFamilyNotAvailable"
+	| "SocketTypeNotSupported"
+	| "AddressInUse"
+	| "FileDescriptorNotASocket"
+	| "OperationNotSupported"
+	| "AlreadyConnected"
+	| "SocketNotBound"
+	| "AddressNotAvailable"
+	| "AlreadyBound"
+	| "InvalidProtocolOption"
+	| "TimeoutTooBig"
+	| "UnexpectedCharacter"
+	| "InvalidFormat"
+	| "InvalidPort"
 
-declare extern type Socket with
+declare extern type TCPStream with
 	function close(self): boolean
-	function bind(self, endpoint: string): Result<nil, NetError>
+	function bind(self, address: string, port: number): Result<nil, NetError>
 	function settimeouts(self, read: number?, write: number?): Result<nil, NetError>
-	--- only supported for udp sockets on IPv4
-	function setbroadcast(self, enable: boolean): Result<nil, NetError>
 	--- address family must match the socket family
-	function connect(self, endpoint: string): Result<nil, NetError>
+	function connect(self, address: string, port: number): Result<nil, NetError>
 	--- call :accept() to get another socket which accepts tcp connections
-	function listen(self): Result<nil, NetError>
+	function listen(self, backlog: number): Result<nil, NetError>
 	--- waits until a connection is made and returns a new socket,
 	--- need to call :listen() before calling this
-	function accept(self): Result<Socket, NetError>
+	function accept(self): Result<TCPStream, NetError>
 	--- on UDP will send full packet, on TCP will append to the stream
 	function send(self, buffer: buffer, length: number?): Result<number, NetError>
-	--- nonblocking peek, does not modify the stream
-	function peek(self, buffer: buffer): Result<number, NetError>
-	--- blocks until data is available
-	function receive(self, buffer: buffer): Result<{length: number, sender: string?}, NetError>
-	--- like :send() but only for udp sockets, returns the number of bytes sent
-	function sendto(self, endpoint: string, buffer: buffer): Result<number, NetError>
-	function enableportreuse(self, enable: boolean): Result<nil, NetError>
+	--- yields until data is available
+	function receive(self, buffer: buffer): Result<number, NetError>
 	function getlocalendpoint(self): Result<string, NetError>
 	function getremoteendpoint(self): Result<string, NetError>
-	function joinmulticastgroup(self, interface: string, group: string): Result<nil, NetError>
-	function reader(self): Reader<Socket, NetError>
-	function writer(self): Writer<Socket, NetError>
+	function reader(self): Reader<TCPStream, NetError>
+	function writer(self): Writer<TCPStream, NetError>
 end

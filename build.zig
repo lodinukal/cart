@@ -71,26 +71,25 @@ pub fn build(b: *std.Build) !void {
     });
     cart_mod.addImport("luau", luau_dep.module("luau"));
 
-    const network_module = b.createModule(.{
-        .root_source_file = b.path("vendor/network/root.zig"),
+    const libxev_dep = b.dependency("libxev", .{
         .target = target,
         .optimize = optimize,
     });
-    cart_mod.addImport("network", network_module);
+    cart_mod.addImport("xev", libxev_dep.module("xev"));
 
-    if (has_ffi) {
-        // dynlib
-        const ffi_dep = b.dependency("ffi", .{
-            .target = target,
-            .optimize = optimize,
-        });
-        cart_mod.addImport("ffi", ffi_dep.module("ffi"));
-        if (b.systemIntegrationOption("ffi", .{})) {
-            cart_mod.linkSystemLibrary("ffi", .{});
-        } else {
-            cart_mod.linkLibrary(ffi_dep.artifact("ffi"));
-        }
-    }
+    // if (has_ffi) {
+    //     // dynlib
+    //     const ffi_dep = b.dependency("ffi", .{
+    //         .target = target,
+    //         .optimize = optimize,
+    //     });
+    //     cart_mod.addImport("ffi", ffi_dep.module("ffi"));
+    //     if (b.systemIntegrationOption("ffi", .{})) {
+    //         cart_mod.linkSystemLibrary("ffi", .{});
+    //     } else {
+    //         cart_mod.linkLibrary(ffi_dep.artifact("ffi"));
+    //     }
+    // }
 
     // Now, we will create a static library based on the module we created above.
     // This creates a `std.Build.Step.Compile`, which is the build step responsible
@@ -159,6 +158,9 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("tests/main.zig"),
         }),
     });
+    if (b.args) |args| {
+        golden_file_tests.filters = args;
+    }
     golden_file_tests.root_module.addImport("cart", cart_mod);
     const run_golden_file_tests = b.addRunArtifact(golden_file_tests);
     run_golden_file_tests.setCwd(b.path("tests"));

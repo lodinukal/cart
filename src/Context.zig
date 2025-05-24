@@ -1,11 +1,14 @@
 // note: CONTEXT IS PINNED IT MUST NOT BE MOVED ONCE .init() IS CALLED
 
-// loop: xev.Loop,
+tpool: xev.ThreadPool,
+loop: xev.Loop,
+asynchronous: xev.Async,
 
 cwd: std.fs.Dir = undefined,
 
 /// extra valid aliases
 stringified_luaurc: []u8 = "",
+extra_aliases: std.StringArrayHashMapUnmanaged(?[]const u8) = .empty,
 /// pinned allocator; we cannot pass the allocator to luau directly, so we
 /// pin it to the Context
 allocator: std.mem.Allocator = undefined,
@@ -57,6 +60,8 @@ pub fn init(self: *@This(), alloc: std.mem.Allocator, config: Config) !void {
     );
     defer as_json.deinit();
 
+    self.extra_aliases = .empty;
+
     const aliases = try as_json.value.object.getOrPut("aliases");
     if (!aliases.found_existing) {
         aliases.value_ptr.* = .{ .object = .init(as_json.arena.allocator()) };
@@ -69,6 +74,16 @@ pub fn init(self: *@This(), alloc: std.mem.Allocator, config: Config) !void {
         try aliases.value_ptr.object.putNoClobber(alias, .{ .string = optional_path });
     }
 
+    try self.extra_aliases.ensureUnusedCapacity(alloc, aliases.value_ptr.object.count());
+    var alias_iter = aliases.value_ptr.object.iterator();
+    while (alias_iter.next()) |entry| {
+        // const alias = entry.key_ptr;
+        // const path = entry.value.string orelse return error.InvalidAlias;
+        // if (alias == null) continue;
+        const alias_point_to = entry.value_ptr.string;
+        self.extra_aliases.putAssumeCapacityNoClobber(entry.key_ptr.*, if (alias_point_to.len == 0) null else alias_point_to);
+    }
+
     const stringified = try std.json.stringifyAlloc(alloc, as_json.value, .{
         .whitespace = .minified,
     });
@@ -77,6 +92,7 @@ pub fn init(self: *@This(), alloc: std.mem.Allocator, config: Config) !void {
         try alloc.alloc(u8, config.max_require_path_working_bytes),
         config.compile_options,
         stringified,
+        self.extra_aliases,
     );
 
     // self should be pinned
@@ -89,9 +105,14 @@ pub fn init(self: *@This(), alloc: std.mem.Allocator, config: Config) !void {
     l.setField(.registry, registry_tag);
 
     self.* = .{
-        // .loop = try .init(.{}),
+        .tpool = .init(.{}),
+        .loop = try .init(.{
+            .thread_pool = &self.tpool,
+        }),
+        .asynchronous = try .init(),
         .cwd = std.fs.cwd(),
         .stringified_luaurc = stringified,
+        .extra_aliases = self.extra_aliases,
         .allocator = self.allocator,
         .state = l,
         .compile_options = config.compile_options,
@@ -101,12 +122,23 @@ pub fn init(self: *@This(), alloc: std.mem.Allocator, config: Config) !void {
 }
 
 pub fn deinit(self: *@This()) void {
+    self.exiting = true;
+    _ = self.state.gc(.collect);
     self.allocator.free(self.stringified_luaurc);
     self.allocator.free(self.require_state.fba.buffer);
     self.require_state.deinit();
+
+    self.extra_aliases.deinit(self.allocator);
+
+    self.asynchronous.deinit();
+    self.loop.run(.until_done) catch |err| {
+        std.debug.print("Error while running loop: {}\n", .{err});
+    };
+    self.loop.deinit();
     self.state.deinit();
 
-    // self.loop.deinit();
+    self.tpool.shutdown();
+    self.tpool.deinit();
 
     self.* = undefined;
 }
@@ -122,22 +154,9 @@ pub fn setWorkingDirectory(self: *@This(), dir: std.fs.Dir) void {
     self.cwd = dir;
 }
 
-pub fn run(_: *@This()) !void {
-    // try self.loop.run(.no_wait);
-}
-
-pub fn runUntilDone(_: *@This()) !void {
-    // try self.loop.run(.until_done);
-}
-
-pub fn isDone(_: *@This()) bool {
-    // return self.loop.done();
-    return true;
-}
-
 const luau = @import("luau");
 const std = @import("std");
-// const xev = @import("xev");
+const xev = @import("xev");
 
 const Context = @This();
 

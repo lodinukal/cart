@@ -30,13 +30,24 @@
             .hash = "1220cfa2f61bdac1107a04b376f0a64160b474736326c00ba64f53a02062419073df",
         },
         .luau = .{
-            .url = "git+https://github.com/lodinukal/luau.git#1929b32f61c25ec9268710f1f51f3db49e13632b",
-            .hash = "luau-0.670.0-SSbB9DGRZgDGRsPNHnTLLb1_ybd4c-qIypgTJX6fwe2S",
+            .url = "git+https://github.com/lodinukal/luau#8c9ba322e2e2d71eb32b3dfc262addeef9712683",
+            .hash = "luau-0.670.0-SSbB9B91ZgAhLzRxAjBZv8pDoL--aAMEwcK4VLqe7ERp",
         },
         .mold = .{
             .url = "git+https://github.com/rui314/mold#f7b1920f849cf6bc8120ce60f474e6580bdbdeb4",
             .hash = "N-V-__8AAFLHPQIPoTogdmvKrh4hOeoZtrJIqyCUQEQGL5vF",
             .lazy = true,
+        },
+        // .libxev = .{
+        //     .path = "vendor/libxev",
+        // },
+        // .libxev = .{
+        //     .url = "git+https://github.com/mitchellh/libxev#58507577fc87b89471809a1a23415bee1d81814d",
+        //     .hash = "libxev-0.0.0-86vtc87kEgBxgbJ1RI1R6Elynb7zydCgNR8dt3uw01My",
+        // },
+        .libxev = .{
+            .url = "git+https://github.com/lodinukal/libxev#950852363860bf9acdfae4310f113a43818813c8",
+            .hash = "libxev-0.0.0-86vtc8XlEgAgLQueUs6lDt0dGFgwNDCYCNlj7t2uaZ0v",
         },
     },
     .paths = .{

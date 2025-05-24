@@ -7,7 +7,7 @@ a `cross application run time` for luau
 TODO:
 
 # stage 1 (simple runtime capabilities for a mvp)
-- [ ] make function wrapper able to work with yielding functions
+- [x] make function wrapper able to work with yielding functions
 - [ ] asyncify cart/net (sockets)
 - [ ] asyncify cart/fs (file system)
 - [ ] create cart/process (process spawning)
@@ -15,7 +15,7 @@ TODO:
 - [ ] create cart/crypto (crypto functions)
 - [ ] port back cart/web (js functions and wasm ffi)
 - [ ] create cart/ffi (ffi functions)
-- [ ] create cart/http (http functions)
+- [ ] create cart/http (http functions) 
 - [ ] create cart/websocket (websocket functions)
 
 # stage 2 (extra libraries that would be nice to have)

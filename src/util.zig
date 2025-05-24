@@ -67,9 +67,24 @@ pub const Diagnostics = struct {
         const msg = try std.fmt.allocPrint(allocator, fmt, args);
         try self.msgs.append(allocator, msg);
     }
+
+    pub fn debug(self: *const Diagnostics) void {
+        for (self.msgs.items) |msg| {
+            std.debug.print("{s}\n", .{msg});
+        }
+    }
 };
 
 pub fn returnErrorUnion(l: *luau.State, comptime T: type, err_union: T, diagnostics: ?*Diagnostics) i32 {
+    {
+        if (err_union) |_| {} else |bad| {
+            switch (@as(anyerror, bad)) {
+                error.YieldLuau0 => return l.yield(0),
+                error.YieldLuau1 => return l.yield(1),
+                else => {},
+            }
+        }
+    }
     pushErrorUnion(l, T, err_union, diagnostics);
     return 1;
 }
@@ -98,29 +113,6 @@ pub fn dumpstack(l: *luau.State) void {
     }
     l.pop(1);
 }
-
-pub const Ref = struct {
-    l: *luau.State,
-    index: i32,
-
-    pub fn init(l: *luau.State, index: luau.vm.Index) !Ref {
-        const r = l.ref(index);
-        if (r == 0) return error.InvalidRef;
-        return .{
-            .l = l,
-            .index = r,
-        };
-    }
-
-    pub fn deinit(self: *Ref) void {
-        self.l.unref(self.index);
-        self.* = undefined;
-    }
-
-    pub fn push(self: Ref) void {
-        _ = self.l.rawGeti(.registry, self.index);
-    }
-};
 
 pub fn MarshalResult(comptime Config: type) type {
     const T: type = @field(Config, "Type");

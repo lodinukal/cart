@@ -6,6 +6,7 @@ export type OpenFlags = {
 	lock: FileLock?,
 	--- create if the file does not exist
 	create: boolean?,
+	follow_symlinks: boolean?,
 }
 
 function fs.openfile(path: string, flags: OpenFlags): Result<File, FileError>
@@ -89,6 +90,18 @@ end
 function fs.hardlinkdir(path: string, target: string): Result<nil, FileError>
 	local _ = path
 	local _ = target
+	return nil :: any
+end
+
+function fs.stdin(): File
+	return nil :: any
+end
+
+function fs.stdout(): File
+	return nil :: any
+end
+
+function fs.stderr(): File
 	return nil :: any
 end
 
