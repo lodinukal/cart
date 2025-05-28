@@ -565,6 +565,16 @@ fn writeFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) YieldError!vo
         max_bytes = @intCast(param_max_bytes);
     };
 
+    switch (file.path) {
+        .stdin => {
+            if (diagnostics) |diag| {
+                diag.push("Cannot write to `{s}`", .{file.path}) catch {};
+            }
+            return error.InvalidArgument;
+        },
+        else => {},
+    }
+
     const current_position = file.stdFile().getPos() catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to get file position because {s}", .{errorName(err)}) catch {};
@@ -634,6 +644,16 @@ fn pwriteFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) YieldError!v
     if (l.toIntegerx(.at(4))) |param_max_bytes| if (param_max_bytes < max_bytes) {
         max_bytes = @intCast(param_max_bytes);
     };
+
+    switch (file.path) {
+        .stdin, .stdout, .stderr => {
+            if (diagnostics) |diag| {
+                diag.push("Cannot pwrite to `{s}`", .{file.path}) catch {};
+            }
+            return error.InvalidArgument;
+        },
+        else => {},
+    }
 
     const future = allocator.create(WriteFileAsync) catch |err| {
         if (diagnostics) |diag| {
@@ -729,6 +749,27 @@ fn readFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) YieldError!usi
         return error.InvalidArgument;
     } else l.toBuffer(.at(2));
 
+    // stdin is special in that it needs to block
+    switch (file.path) {
+        .stdin => {
+            const read = file.stdFile().read(buffer.mutable) catch |err| {
+                if (diagnostics) |diag| {
+                    diag.push("Failed to read from stdin because {s}", .{errorName(err)}) catch {};
+                }
+                return err;
+            };
+
+            return read;
+        },
+        .stderr, .stdout => {
+            if (diagnostics) |diag| {
+                diag.push("Cannot read from `{s}`", .{file.path}) catch {};
+            }
+            return error.InvalidArgument;
+        },
+        else => {},
+    }
+
     const future = allocator.create(ReadFileAsync) catch |err| {
         if (diagnostics) |diag| {
             diag.push("Failed to create future because {s}", .{errorName(err)}) catch {};
@@ -779,6 +820,16 @@ fn preadFile(l: *luau.State, diagnostics: ?*cart.util.Diagnostics) YieldError!us
         }
         return error.InvalidArgument;
     } else l.toBuffer(.at(3));
+
+    switch (file.path) {
+        .stdin, .stderr, .stdout => {
+            if (diagnostics) |diag| {
+                diag.push("Cannot pread from `{s}`", .{file.path}) catch {};
+            }
+            return error.InvalidArgument;
+        },
+        else => {},
+    }
 
     const future = allocator.create(ReadFileAsync) catch |err| {
         if (diagnostics) |diag| {
